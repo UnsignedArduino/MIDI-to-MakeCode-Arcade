@@ -1,9 +1,11 @@
 import logging
 from collections import namedtuple
 from math import ceil
+from sys import stdout
 from typing import Union
 
 from mido import Message, MidiFile
+from tqdm import tqdm
 
 from arcade.music import EnharmonicSpelling, Note, NoteEvent, Song, Track, \
     getEmptySong
@@ -88,7 +90,8 @@ def midi_to_song(midi: MidiFile, track_id: Union[str, int],
 
     curr_time = 0
     ending_tick = 0
-    for i, msg in enumerate(msgs):
+    for i, msg in tqdm(enumerate(msgs), desc="Processing (stage 1/3)",
+                       file=stdout):
         curr_time += round(msg.time * 1000)
         if msg.type not in ("note_on", "note_off"):
             continue
@@ -114,7 +117,7 @@ def midi_to_song(midi: MidiFile, track_id: Union[str, int],
     ending_tick = round(ending_tick / divisor)
 
     simple_chords = []
-    for note in simple_notes:
+    for note in tqdm(simple_notes, desc="Processing (stage 2/3)", file=stdout):
         chord_index = find_chord_with_start_tick(simple_chords,
                                                  note.start_tick)
         if chord_index == -1:
@@ -129,10 +132,8 @@ def midi_to_song(midi: MidiFile, track_id: Union[str, int],
     beats_per_minute = round(60 / divisor)
     measure_count = ceil(ending_tick / ticks_per_beat / beats_per_measure)
 
-    logger.debug(f"measure_count = {measure_count}")
-    logger.debug(f"ticksPerBeat = {ticks_per_beat}")
-    logger.debug(f"beatsPerMeasure = {beats_per_measure}")
-    logger.debug(f"beatsPerMinute = {beats_per_minute}")
+    logger.debug(
+        f"{measure_count=} {ticks_per_beat=} {beats_per_measure=} {beats_per_minute=}")
     logger.debug(f"Maximum number of ticks is "
                  f"{measure_count * ticks_per_beat * beats_per_measure} ticks")
 
@@ -143,7 +144,8 @@ def midi_to_song(midi: MidiFile, track_id: Union[str, int],
     song.tracks.clear()
     add_tracks_for_piano(song, track_id)
 
-    for i, chord in enumerate(simple_chords):
+    for i, chord in tqdm(enumerate(simple_chords), desc="Processing (stage 3/3)",
+                         file=stdout):
         # logger.debug(f"Chord {i}: {chord}")
         all_notes = [Note(note=n, enharmonicSpelling=EnharmonicSpelling.NORMAL)
                      for n in chord.notes]
