@@ -4,9 +4,8 @@ from pathlib import Path
 
 from mido import MidiFile
 
-from arcade.music import encodeSong
 from arcade.tracks import get_available_tracks
-from midi_to_song import midi_to_song
+from converter import OutputOptions, convert
 from utils.logger import create_logger, set_all_stdout_logger_levels
 
 tracks = get_available_tracks()
@@ -65,25 +64,8 @@ if char_break < 0:
     raise ValueError(f"break must be an integer greater than or equal to 0, "
                      f"not {char_break}!")
 
-song = midi_to_song(midi, int(args.track) if args.track.isnumeric() else args.track,
-                    divisor)
-bin_result = encodeSong(song)
-
-logger.debug(f"Generated {len(bin_result)} bytes, converting to text")
-
-logger.debug(f"Using character break of {char_break}")
-
-hex_result = map(lambda v: format(v, "02x"), bin_result)
-result = "hex`"
-for i, hex_num in enumerate(hex_result):
-    if char_break != 0 and i % char_break == 0:
-        result += "\n    "
-    result += hex_num
-if char_break != 0:
-    result += "\n"
-result += "`"
-
-logger.debug(f"Hex string result is {len(result)} characters long")
+result = convert(midi, OutputOptions.MAKECODE_ARCADE_STRING, args.track, divisor,
+                 char_break)
 
 output_path = args.output
 if output_path is None:
