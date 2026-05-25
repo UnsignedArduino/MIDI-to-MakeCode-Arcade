@@ -8,23 +8,23 @@ from utils.logger import create_logger
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
-def set8BitNumber(buf: bytearray, offset: int, value: int):
+def set_8_bit_number(buf: bytearray, offset: int, value: int):
     struct.pack_into("<B", buf, offset, value & 0xFF)
 
 
-def get8BitNumber(buf: bytearray, offset: int) -> int:
+def get_8_bit_number(buf: bytearray, offset: int) -> int:
     return struct.unpack_from("<B", buf, offset)[0]
 
 
-def set16BitNumber(buf: bytearray, offset: int, value: int):
+def set_16_bit_number(buf: bytearray, offset: int, value: int):
     struct.pack_into("<H", buf, offset, value & 0xFFFF)
 
 
-def get16BitNumber(buf: bytearray, offset: int) -> int:
+def get_16_bit_number(buf: bytearray, offset: int) -> int:
     return struct.unpack_from("<H", buf, offset)[0]
 
 
-def encodeSong(song: Song) -> bytearray:
+def encode_song(song: Song) -> bytearray:
     """
     Encode a MakeCode Arcade song into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L96
@@ -32,36 +32,37 @@ def encodeSong(song: Song) -> bytearray:
     :param song: The MakeCode Arcade song.
     :return: A bytearray, convert this to hex to use in a MakeCode Arcade program.
     """
-    encodedTracks = [encodeTrack(track) for track in song.tracks if
-                     len(track.notes) > 0]
-    encodedTrackVelocities: List[bytearray] = list(filter(lambda v: v is not None,
-                                                          [encodeTrackVelocity(track)
-                                                           for track in
-                                                           song.tracks]))
+    encoded_tracks = [encode_track(track) for track in song.tracks if
+                      len(track.notes) > 0]
+    encoded_track_velocities: List[bytearray] = list(filter(lambda v: v is not None,
+                                                            [encode_track_velocity(
+                                                                track)
+                                                                for track in
+                                                                song.tracks]))
 
-    trackLength = sum(len(c) for c in (encodedTracks + encodedTrackVelocities))
+    track_length = sum(len(c) for c in (encoded_tracks + encoded_track_velocities))
 
-    out = bytearray(7 + trackLength)
-    set8BitNumber(out, 0, 0)  # encoding version
-    set16BitNumber(out, 1, song.beatsPerMinute)
-    set8BitNumber(out, 3, song.beatsPerMeasure)
-    set8BitNumber(out, 4, song.ticksPerBeat)
-    set8BitNumber(out, 5, song.measures)
-    set8BitNumber(out, 6, len(encodedTracks))
+    out = bytearray(7 + track_length)
+    set_8_bit_number(out, 0, 0)  # encoding version
+    set_16_bit_number(out, 1, song.beats_per_minute)
+    set_8_bit_number(out, 3, song.beats_per_measure)
+    set_8_bit_number(out, 4, song.ticks_per_beat)
+    set_8_bit_number(out, 5, song.measures)
+    set_8_bit_number(out, 6, len(encoded_tracks))
 
     current = 7
-    for track in encodedTracks:
+    for track in encoded_tracks:
         out[current:current + len(track)] = track
         current += len(track)
 
-    for trackVelocity in encodedTrackVelocities:
+    for trackVelocity in encoded_track_velocities:
         out[current:current + len(trackVelocity)] = trackVelocity
         current += len(trackVelocity)
 
     return out
 
 
-def encodeInstrument(instrument: Instrument) -> bytearray:
+def encode_instrument(instrument: Instrument) -> bytearray:
     """
     Encode a MakeCode Arcade instrument into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L127
@@ -70,41 +71,41 @@ def encodeInstrument(instrument: Instrument) -> bytearray:
     :return: A bytearray.
     """
     out = bytearray(28)
-    set8BitNumber(out, 0, instrument.waveform)
-    set16BitNumber(out, 1, instrument.ampEnvelope.attack)
-    set16BitNumber(out, 3, instrument.ampEnvelope.decay)
-    set16BitNumber(out, 5, instrument.ampEnvelope.sustain)
-    set16BitNumber(out, 7, instrument.ampEnvelope.release)
-    set16BitNumber(out, 9, instrument.ampEnvelope.amplitude)
-    if instrument.pitchEnvelope is not None:
-        set16BitNumber(out, 11, instrument.pitchEnvelope.attack)
-        set16BitNumber(out, 13, instrument.pitchEnvelope.decay)
-        set16BitNumber(out, 15, instrument.pitchEnvelope.sustain)
-        set16BitNumber(out, 17, instrument.pitchEnvelope.release)
-        set16BitNumber(out, 19, instrument.pitchEnvelope.amplitude)
+    set_8_bit_number(out, 0, instrument.waveform)
+    set_16_bit_number(out, 1, instrument.amp_envelope.attack)
+    set_16_bit_number(out, 3, instrument.amp_envelope.decay)
+    set_16_bit_number(out, 5, instrument.amp_envelope.sustain)
+    set_16_bit_number(out, 7, instrument.amp_envelope.release)
+    set_16_bit_number(out, 9, instrument.amp_envelope.amplitude)
+    if instrument.pitch_envelope is not None:
+        set_16_bit_number(out, 11, instrument.pitch_envelope.attack)
+        set_16_bit_number(out, 13, instrument.pitch_envelope.decay)
+        set_16_bit_number(out, 15, instrument.pitch_envelope.sustain)
+        set_16_bit_number(out, 17, instrument.pitch_envelope.release)
+        set_16_bit_number(out, 19, instrument.pitch_envelope.amplitude)
     else:
-        set16BitNumber(out, 11, 0)
-        set16BitNumber(out, 13, 0)
-        set16BitNumber(out, 15, 0)
-        set16BitNumber(out, 17, 0)
-        set16BitNumber(out, 19, 0)
-    if instrument.ampLFO is not None:
-        set8BitNumber(out, 21, instrument.ampLFO.frequency)
-        set16BitNumber(out, 22, instrument.ampLFO.amplitude)
+        set_16_bit_number(out, 11, 0)
+        set_16_bit_number(out, 13, 0)
+        set_16_bit_number(out, 15, 0)
+        set_16_bit_number(out, 17, 0)
+        set_16_bit_number(out, 19, 0)
+    if instrument.amp_lfo is not None:
+        set_8_bit_number(out, 21, instrument.amp_lfo.frequency)
+        set_16_bit_number(out, 22, instrument.amp_lfo.amplitude)
     else:
-        set8BitNumber(out, 21, 0)
-        set16BitNumber(out, 22, 0)
-    if instrument.pitchLFO is not None:
-        set8BitNumber(out, 24, instrument.pitchLFO.frequency)
-        set16BitNumber(out, 25, instrument.pitchLFO.amplitude)
+        set_8_bit_number(out, 21, 0)
+        set_16_bit_number(out, 22, 0)
+    if instrument.pitch_lfo is not None:
+        set_8_bit_number(out, 24, instrument.pitch_lfo.frequency)
+        set_16_bit_number(out, 25, instrument.pitch_lfo.amplitude)
     else:
-        set8BitNumber(out, 24, 0)
-        set16BitNumber(out, 25, 0)
-    set8BitNumber(out, 27, instrument.octave if instrument.octave is not None else 0)
+        set_8_bit_number(out, 24, 0)
+        set_16_bit_number(out, 25, 0)
+    set_8_bit_number(out, 27, instrument.octave if instrument.octave is not None else 0)
     return out
 
 
-def encodeDrumInstrument(drum: DrumInstrument) -> bytearray:
+def encode_drum_instrument(drum: DrumInstrument) -> bytearray:
     """
     Encode a MakeCode Arcade drum instrument into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L149
@@ -113,63 +114,64 @@ def encodeDrumInstrument(drum: DrumInstrument) -> bytearray:
     :return: A bytearray.
     """
     out = bytearray(5 + 7 * len(drum.steps))
-    set8BitNumber(out, 0, len(drum.steps))
-    set16BitNumber(out, 1, drum.startFrequency)
-    set16BitNumber(out, 3, drum.startVolume)
+    set_8_bit_number(out, 0, len(drum.steps))
+    set_16_bit_number(out, 1, drum.start_frequency)
+    set_16_bit_number(out, 3, drum.start_volume)
     for i, step in enumerate(drum.steps):
         start = 5 + i * 7
-        set8BitNumber(out, start, step.waveform)
-        set16BitNumber(out, start + 1, step.frequency)
-        set16BitNumber(out, start + 3, step.volume)
-        set16BitNumber(out, start + 5, step.duration)
+        set_8_bit_number(out, start, step.waveform)
+        set_16_bit_number(out, start + 1, step.frequency)
+        set_16_bit_number(out, start + 3, step.volume)
+        set_16_bit_number(out, start + 5, step.duration)
     return out
 
 
-def encodeNoteEvent(event: NoteEvent, instrumentOctave: int,
-                    isDrumTrack: bool) -> bytearray:
+def encode_note_event(event: NoteEvent, instrument_octave: int,
+                      is_drum_track: bool) -> bytearray:
     """
     Encode a MakeCode Arcade note event into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L166
 
     :param event: The MakeCode Arcade `NoteEvent`.
-    :param instrumentOctave: The instrument octave offset used for the note event.
-    :param isDrumTrack: Whether this note event is for a drum track or not.
+    :param instrument_octave: The instrument octave offset used for the note event.
+    :param is_drum_track: Whether this note event is for a drum track or not.
     :return: A bytearray.
     """
     out = bytearray(5 + len(event.notes))
-    set16BitNumber(out, 0, event.startTick)
-    set16BitNumber(out, 2, event.endTick)
-    set8BitNumber(out, 4, len(event.notes))
+    set_16_bit_number(out, 0, event.start_tick)
+    set_16_bit_number(out, 2, event.end_tick)
+    set_8_bit_number(out, 4, len(event.notes))
 
     for i, note in enumerate(event.notes):
-        set8BitNumber(out, 5 + i, encodeNote(note, instrumentOctave, isDrumTrack))
+        set_8_bit_number(out, 5 + i,
+                         encode_note(note, instrument_octave, is_drum_track))
 
     return out
 
 
-def encodeNote(note: Note, instrumentOctave: int, isDrumTrack: bool) -> int:
+def encode_note(note: Note, instrument_octave: int, is_drum_track: bool) -> int:
     """
     Encode a MakeCode Arcade note into a single byte. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L179
 
     :param note: The MakeCode Arcade `Note`.
-    :param instrumentOctave: The instrument octave offset used for the note.
-    :param isDrumTrack: Whether this note is for a drum track or not.
+    :param instrument_octave: The instrument octave offset used for the note.
+    :param is_drum_track: Whether this note is for a drum track or not.
     :return: An int, which will fit into a single byte.
     """
-    if isDrumTrack:
+    if is_drum_track:
         return note.note
 
     flags = 0
-    if note.enharmonicSpelling == EnharmonicSpelling.FLAT:
+    if note.enharmonic_spelling == EnharmonicSpelling.FLAT:
         flags = 1
-    elif note.enharmonicSpelling == EnharmonicSpelling.SHARP:
+    elif note.enharmonic_spelling == EnharmonicSpelling.SHARP:
         flags = 2
 
-    return (note.note - (instrumentOctave - 2) * 12) | (flags << 6)
+    return (note.note - (instrument_octave - 2) * 12) | (flags << 6)
 
 
-def encodeTrack(track: Track) -> bytearray:
+def encode_track(track: Track) -> bytearray:
     """
     Encode a MakeCode Arcade track into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L195
@@ -178,12 +180,12 @@ def encodeTrack(track: Track) -> bytearray:
     :return: A bytearray.
     """
     if track.drums:
-        return encodeDrumTrack(track)
+        return encode_drum_track(track)
     else:
-        return encodeMelodicTrack(track)
+        return encode_melodic_track(track)
 
 
-def encodeTrackVelocity(track: Track) -> Optional[bytearray]:
+def encode_track_velocity(track: Track) -> Optional[bytearray]:
     """
     Encode a MakeCode Arcade track's velocity data into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L200
@@ -196,13 +198,13 @@ def encodeTrackVelocity(track: Track) -> Optional[bytearray]:
         return None
 
     out = bytearray(1 + len(track.notes))
-    set8BitNumber(out, 0, track.id)
+    set_8_bit_number(out, 0, track.id)
     for i, note in enumerate(track.notes):
-        set8BitNumber(out, 1 + i, note.velocity if note.velocity is not None else 0)
+        set_8_bit_number(out, 1 + i, note.velocity if note.velocity is not None else 0)
     return out
 
 
-def encodeMelodicTrack(track: Track) -> bytearray:
+def encode_melodic_track(track: Track) -> bytearray:
     """
     Encode a MakeCode Arcade melodic track into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L211
@@ -210,30 +212,30 @@ def encodeMelodicTrack(track: Track) -> bytearray:
     :param track: The MakeCode Arcade `Track`, must be melodic.
     :return: A bytearray.
     """
-    encodedInstrument = encodeInstrument(track.instrument)
-    encodedNotes = [encodeNoteEvent(note, track.instrument.octave, False) for note in
-                    track.notes]
-    noteLength = sum(len(c) for c in encodedNotes)
+    encoded_instrument = encode_instrument(track.instrument)
+    encoded_notes = [encode_note_event(note, track.instrument.octave, False) for note in
+                     track.notes]
+    note_length = sum(len(c) for c in encoded_notes)
 
-    out = bytearray(6 + len(encodedInstrument) + noteLength)
-    set8BitNumber(out, 0, track.id)
-    set8BitNumber(out, 1, 0)
+    out = bytearray(6 + len(encoded_instrument) + note_length)
+    set_8_bit_number(out, 0, track.id)
+    set_8_bit_number(out, 1, 0)
 
-    set16BitNumber(out, 2, len(encodedInstrument))
+    set_16_bit_number(out, 2, len(encoded_instrument))
     current = 4
-    out[current:current + len(encodedInstrument)] = encodedInstrument
-    current += len(encodedInstrument)
+    out[current:current + len(encoded_instrument)] = encoded_instrument
+    current += len(encoded_instrument)
 
-    set16BitNumber(out, current, noteLength)
+    set_16_bit_number(out, current, note_length)
     current += 2
-    for note in encodedNotes:
+    for note in encoded_notes:
         out[current:current + len(note)] = note
         current += len(note)
 
     return out
 
 
-def encodeDrumTrack(track: Track) -> bytearray:
+def encode_drum_track(track: Track) -> bytearray:
     """
     Encode a MakeCode Arcade drum track into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L235
@@ -242,32 +244,32 @@ def encodeDrumTrack(track: Track) -> bytearray:
     :return: A bytearray.
     """
     assert track.drums is not None
-    encodedDrums = [encodeDrumInstrument(drum) for drum in track.drums]
-    drumLength = sum(len(c) for c in encodedDrums)
+    encoded_drums = [encode_drum_instrument(drum) for drum in track.drums]
+    drum_length = sum(len(c) for c in encoded_drums)
 
-    encodedNotes = [encodeNoteEvent(note, 0, True) for note in track.notes]
-    noteLength = sum(len(c) for c in encodedNotes)
+    encoded_notes = [encode_note_event(note, 0, True) for note in track.notes]
+    note_length = sum(len(c) for c in encoded_notes)
 
-    out = bytearray(6 + drumLength + noteLength)
-    set8BitNumber(out, 0, track.id)
-    set8BitNumber(out, 1, 1)
-    set16BitNumber(out, 2, drumLength)
+    out = bytearray(6 + drum_length + note_length)
+    set_8_bit_number(out, 0, track.id)
+    set_8_bit_number(out, 1, 1)
+    set_16_bit_number(out, 2, drum_length)
     current = 4
 
-    for drum in encodedDrums:
+    for drum in encoded_drums:
         out[current:current + len(drum)] = drum
         current += len(drum)
 
-    set16BitNumber(out, current, noteLength)
+    set_16_bit_number(out, current, note_length)
     current += 2
-    for note in encodedNotes:
+    for note in encoded_notes:
         out[current:current + len(note)] = note
         current += len(note)
 
     return out
 
 
-def decodeSong(buf: bytearray) -> Song:
+def decode_song(buf: bytearray) -> Song:
     """
     Decode a MakeCode Arcade song from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L269
@@ -275,27 +277,27 @@ def decodeSong(buf: bytearray) -> Song:
     :param buf: A bytearray of an entire song.
     :return: A MakeCode Arcade `Song`.
     """
-    res = Song(beatsPerMinute=get16BitNumber(buf, 1),
-               beatsPerMeasure=get8BitNumber(buf, 3),
-               ticksPerBeat=get8BitNumber(buf, 4),
-               measures=get8BitNumber(buf, 5),
+    res = Song(beats_per_minute=get_16_bit_number(buf, 1),
+               beats_per_measure=get_8_bit_number(buf, 3),
+               ticks_per_beat=get_8_bit_number(buf, 4),
+               measures=get_8_bit_number(buf, 5),
                tracks=[])
 
-    numTracks = get8BitNumber(buf, 6)
+    num_tracks = get_8_bit_number(buf, 6)
     current = 7
 
-    for _ in range(numTracks):
-        track, pointer = decodeTrack(buf, current)
+    for _ in range(num_tracks):
+        track, pointer = decode_track(buf, current)
         current = pointer
         res.tracks.append(track)
 
     while current < len(buf):
-        current = decodeTrackVelocity(buf, res.tracks, current)
+        current = decode_track_velocity(buf, res.tracks, current)
 
     return res
 
 
-def decodeInstrument(buf: bytearray, offset: int) -> Instrument:
+def decode_instrument(buf: bytearray, offset: int) -> Instrument:
     """
     Decode a MakeCode Arcade instrument from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L294
@@ -306,36 +308,36 @@ def decodeInstrument(buf: bytearray, offset: int) -> Instrument:
     :return: A MakeCode Arcade `Instrument`.
     """
     return Instrument(
-        waveform=get8BitNumber(buf, offset),
-        ampEnvelope=Envelope(
-            attack=get16BitNumber(buf, offset + 1),
-            decay=get16BitNumber(buf, offset + 3),
-            sustain=get16BitNumber(buf, offset + 5),
-            release=get16BitNumber(buf, offset + 7),
-            amplitude=get16BitNumber(buf, offset + 9),
+        waveform=get_8_bit_number(buf, offset),
+        amp_envelope=Envelope(
+            attack=get_16_bit_number(buf, offset + 1),
+            decay=get_16_bit_number(buf, offset + 3),
+            sustain=get_16_bit_number(buf, offset + 5),
+            release=get_16_bit_number(buf, offset + 7),
+            amplitude=get_16_bit_number(buf, offset + 9),
         ),
-        pitchEnvelope=Envelope(
-            attack=get16BitNumber(buf, offset + 11),
-            decay=get16BitNumber(buf, offset + 13),
-            sustain=get16BitNumber(buf, offset + 15),
-            release=get16BitNumber(buf, offset + 17),
-            amplitude=get16BitNumber(buf, offset + 19),
+        pitch_envelope=Envelope(
+            attack=get_16_bit_number(buf, offset + 11),
+            decay=get_16_bit_number(buf, offset + 13),
+            sustain=get_16_bit_number(buf, offset + 15),
+            release=get_16_bit_number(buf, offset + 17),
+            amplitude=get_16_bit_number(buf, offset + 19),
         ),
-        ampLFO=LFO(
-            frequency=get8BitNumber(buf, offset + 21),
-            amplitude=get16BitNumber(buf, offset + 22),
+        amp_lfo=LFO(
+            frequency=get_8_bit_number(buf, offset + 21),
+            amplitude=get_16_bit_number(buf, offset + 22),
             # the original implementation is 22 instead of offset + 22
         ),
-        pitchLFO=LFO(
-            frequency=get8BitNumber(buf, offset + 24),
-            amplitude=get16BitNumber(buf, offset + 25),
+        pitch_lfo=LFO(
+            frequency=get_8_bit_number(buf, offset + 24),
+            amplitude=get_16_bit_number(buf, offset + 25),
             # the original implementation is 25 instead of offset + 25
         ),
-        octave=get8BitNumber(buf, offset + 27),
+        octave=get_8_bit_number(buf, offset + 27),
     )
 
 
-def decodeTrack(buf: bytearray, offset: int) -> Tuple[Track, int]:
+def decode_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
     """
     Decode a MakeCode Arcade track from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L323
@@ -345,13 +347,13 @@ def decodeTrack(buf: bytearray, offset: int) -> Tuple[Track, int]:
      data from.
     :return: A MakeCode Arcade `Track`.
     """
-    if get8BitNumber(buf, offset + 1) != 0:
-        return decodeDrumTrack(buf, offset)
+    if get_8_bit_number(buf, offset + 1) != 0:
+        return decode_drum_track(buf, offset)
     else:
-        return decodeMelodicTrack(buf, offset)
+        return decode_melodic_track(buf, offset)
 
 
-def decodeTrackVelocity(buf: bytearray, tracks: List[Track], offset: int) -> int:
+def decode_track_velocity(buf: bytearray, tracks: List[Track], offset: int) -> int:
     """
     Decode a MakeCode Arcade track velocity from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L331
@@ -363,16 +365,16 @@ def decodeTrackVelocity(buf: bytearray, tracks: List[Track], offset: int) -> int
      data from.
     :return: The next offset after the end of this track velocity data.
     """
-    trackId = get8BitNumber(buf, offset)
-    track = next((t for t in tracks if t.id == trackId), None)
+    track_id = get_8_bit_number(buf, offset)
+    track = next((t for t in tracks if t.id == track_id), None)
     if track is None:
-        raise ValueError(f"Track with {trackId} not found")
+        raise ValueError(f"Track with {track_id} not found")
     for i in range(len(track.notes)):
-        track.notes[i].velocity = get8BitNumber(buf, offset + i + 1)
+        track.notes[i].velocity = get_8_bit_number(buf, offset + i + 1)
     return offset + len(track.notes) + 1
 
 
-def decodeDrumInstrument(buf: bytearray, offset: int) -> DrumInstrument:
+def decode_drum_instrument(buf: bytearray, offset: int) -> DrumInstrument:
     """
     Decode a MakeCode Arcade drum instrument from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L341
@@ -383,25 +385,25 @@ def decodeDrumInstrument(buf: bytearray, offset: int) -> DrumInstrument:
     :return: A MakeCode Arcade `DrumInstrument`.
     """
     res = DrumInstrument(
-        startFrequency=get16BitNumber(buf, offset + 1),
-        startVolume=get16BitNumber(buf, offset + 3),
+        start_frequency=get_16_bit_number(buf, offset + 1),
+        start_volume=get_16_bit_number(buf, offset + 3),
         steps=[],
     )
 
-    for i in range(get8BitNumber(buf, offset)):
+    for i in range(get_8_bit_number(buf, offset)):
         start = offset + 5 + i * 7
         res.steps.append(DrumSoundStep(
-            waveform=get8BitNumber(buf, start),
-            frequency=get16BitNumber(buf, start + 1),
-            volume=get16BitNumber(buf, start + 3),
-            duration=get16BitNumber(buf, start + 5)
+            waveform=get_8_bit_number(buf, start),
+            frequency=get_16_bit_number(buf, start + 1),
+            volume=get_16_bit_number(buf, start + 3),
+            duration=get_16_bit_number(buf, start + 5)
         ))
 
     return res
 
 
-def decodeNoteEvent(buf: bytearray, offset: int, instrumentOctave: int,
-                    isDrumTrack: bool) -> NoteEvent:
+def decode_note_event(buf: bytearray, offset: int, instrument_octave: int,
+                      is_drum_track: bool) -> NoteEvent:
     """
     Decode a MakeCode Arcade note event from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L361
@@ -409,56 +411,56 @@ def decodeNoteEvent(buf: bytearray, offset: int, instrumentOctave: int,
     :param buf: A bytearray of an entire song.
     :param offset: The offset in the bytearray which to start reading the note event
      data from.
-    :param instrumentOctave: The instrument's octave offset used for the note event,
+    :param instrument_octave: The instrument's octave offset used for the note event,
      needed to decode the note value itself.
-    :param isDrumTrack: Whether this note event is for a drum track or not, needed to
+    :param is_drum_track: Whether this note event is for a drum track or not, needed to
      decode the note.
     :return: A MakeCode Arcade `NoteEvent`.
     """
     res = NoteEvent(
-        startTick=get16BitNumber(buf, offset),
-        endTick=get16BitNumber(buf, offset + 2),
+        start_tick=get_16_bit_number(buf, offset),
+        end_tick=get_16_bit_number(buf, offset + 2),
         notes=[],
     )
 
-    for i in range(get8BitNumber(buf, offset + 4)):
+    for i in range(get_8_bit_number(buf, offset + 4)):
         res.notes.append(
-            decodeNote(
-                get8BitNumber(buf, offset + 5 + i),
-                instrumentOctave,
-                isDrumTrack
+            decode_note(
+                get_8_bit_number(buf, offset + 5 + i),
+                instrument_octave,
+                is_drum_track
             )
         )
 
     return res
 
 
-def decodeNote(note: int, instrumentOctave: int, isDrumTrack: bool) -> Note:
+def decode_note(note: int, instrument_octave: int, is_drum_track: bool) -> Note:
     """
     Construct a MakeCode Arcade note from specified parameters. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L374
 
     :param note: The note number itself, between 0 and 63. For melodic tracks, the
      instrument octave is taken into account.
-    :param instrumentOctave: The track's instrument's octave offset.
-    :param isDrumTrack: Whether this note is for a drum track or not.
+    :param instrument_octave: The track's instrument's octave offset.
+    :param is_drum_track: Whether this note is for a drum track or not.
     :return: A MakeCode Arcade `Note`.
     """
     flags = note >> 6
     res = Note(
-        note=note if isDrumTrack else ((note & 0x3F) + (instrumentOctave - 2) * 12),
-        enharmonicSpelling=EnharmonicSpelling.NORMAL
+        note=note if is_drum_track else ((note & 0x3F) + (instrument_octave - 2) * 12),
+        enharmonic_spelling=EnharmonicSpelling.NORMAL
     )
 
     if flags == 1:
-        res.enharmonicSpelling = EnharmonicSpelling.FLAT
+        res.enharmonic_spelling = EnharmonicSpelling.FLAT
     elif flags == 2:
-        res.enharmonicSpelling = EnharmonicSpelling.SHARP
+        res.enharmonic_spelling = EnharmonicSpelling.SHARP
 
     return res
 
 
-def decodeMelodicTrack(buf: bytearray, offset: int) -> Tuple[Track, int]:
+def decode_melodic_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
     """
     Decode a MakeCode Arcade melodic track from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L392
@@ -470,26 +472,26 @@ def decodeMelodicTrack(buf: bytearray, offset: int) -> Tuple[Track, int]:
      this track data.
     """
     res = Track(
-        id=get8BitNumber(buf, offset),
-        instrument=decodeInstrument(buf, offset + 4),
+        id=get_8_bit_number(buf, offset),
+        instrument=decode_instrument(buf, offset + 4),
         notes=[]
     )
 
-    noteStart = offset + 4 + get16BitNumber(buf, offset + 2)
-    noteLength = get16BitNumber(buf, noteStart)
+    note_start = offset + 4 + get_16_bit_number(buf, offset + 2)
+    note_length = get_16_bit_number(buf, note_start)
 
-    currentOffset = noteStart + 2
+    current_offset = note_start + 2
 
-    while currentOffset < noteStart + 2 + noteLength:
+    while current_offset < note_start + 2 + note_length:
         res.notes.append(
-            decodeNoteEvent(buf, currentOffset, res.instrument.octave, False)
+            decode_note_event(buf, current_offset, res.instrument.octave, False)
         )
-        currentOffset += 5 + len(res.notes[-1].notes)
+        current_offset += 5 + len(res.notes[-1].notes)
 
-    return res, currentOffset
+    return res, current_offset
 
 
-def decodeDrumTrack(buf: bytearray, offset: int) -> Tuple[Track, int]:
+def decode_drum_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
     """
     Decode a MakeCode Arcade drum track from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L412
@@ -501,26 +503,26 @@ def decodeDrumTrack(buf: bytearray, offset: int) -> Tuple[Track, int]:
      this track data.
     """
     res = Track(
-        id=get8BitNumber(buf, offset),
+        id=get_8_bit_number(buf, offset),
         instrument=Instrument(
-            ampEnvelope=Envelope(attack=0, decay=0, sustain=0, release=0, amplitude=0),
+            amp_envelope=Envelope(attack=0, decay=0, sustain=0, release=0, amplitude=0),
             waveform=0, octave=0),
         notes=[],
         drums=[]
     )
 
-    drumByteLength = get16BitNumber(buf, offset + 2)
-    currentOffset = offset + 4
+    drum_byte_length = get_16_bit_number(buf, offset + 2)
+    current_offset = offset + 4
 
-    while currentOffset < (offset + 4 + drumByteLength):
-        res.drums.append(decodeDrumInstrument(buf, currentOffset))
-        currentOffset += 5 + 7 * len(res.drums[-1].steps)
+    while current_offset < (offset + 4 + drum_byte_length):
+        res.drums.append(decode_drum_instrument(buf, current_offset))
+        current_offset += 5 + 7 * len(res.drums[-1].steps)
 
-    noteLength = get16BitNumber(buf, currentOffset)
-    currentOffset += 2
+    note_length = get_16_bit_number(buf, current_offset)
+    current_offset += 2
 
-    while currentOffset < (offset + 4 + drumByteLength + noteLength):
-        res.notes.append(decodeNoteEvent(buf, currentOffset, 0, True))
-        currentOffset += 5 + len(res.notes[-1].notes)
+    while current_offset < (offset + 4 + drum_byte_length + note_length):
+        res.notes.append(decode_note_event(buf, current_offset, 0, True))
+        current_offset += 5 + len(res.notes[-1].notes)
 
-    return res, currentOffset
+    return res, current_offset

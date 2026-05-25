@@ -88,11 +88,11 @@ logger = create_logger(name=__name__, level=logging.INFO)
 @dataclass
 class Instrument:
     waveform: int
-    ampEnvelope: Envelope
+    amp_envelope: Envelope
     octave: int
-    pitchEnvelope: Optional[Envelope] = None
-    ampLFO: Optional[LFO] = None
-    pitchLFO: Optional[LFO] = None
+    pitch_envelope: Optional[Envelope] = None
+    amp_lfo: Optional[LFO] = None
+    pitch_lfo: Optional[LFO] = None
 
 
 @dataclass
@@ -113,9 +113,9 @@ class LFO:
 @dataclass
 class SongInfo:
     measures: int
-    beatsPerMeasure: int
-    beatsPerMinute: int
-    ticksPerBeat: int
+    beats_per_measure: int
+    beats_per_minute: int
+    ticks_per_beat: int
 
 
 @dataclass
@@ -130,14 +130,14 @@ class Track:
     notes: List[NoteEvent]
     drums: Optional[List[DrumInstrument]] = None
     name: Optional[str] = None
-    iconURI: Optional[str] = None
+    icon_uri: Optional[str] = None
 
 
 @dataclass
 class NoteEvent:
     notes: List[Note]
-    startTick: int
-    endTick: int
+    start_tick: int
+    end_tick: int
     velocity: Optional[int] = None
 
 
@@ -150,7 +150,7 @@ class EnharmonicSpelling(Enum):
 @dataclass
 class Note:
     note: int
-    enharmonicSpelling: EnharmonicSpelling
+    enharmonic_spelling: EnharmonicSpelling
 
 
 @dataclass
@@ -163,7 +163,7 @@ class DrumSoundStep:
 
 @dataclass
 class DrumInstrument:
-    startFrequency: int
-    startVolume: int
+    start_frequency: int
+    start_volume: int
     steps: List[DrumSoundStep]
     name: Optional[str] = None
