@@ -17,6 +17,7 @@ class AbsoluteTickMessage:
     tick: int  # absolute MIDI tick
     track: int
     msg: Message
+    msg_idx: int
 
 
 @dataclass
@@ -51,13 +52,12 @@ def build_timeline(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
     all_msgs_with_abs_ticks: List[AbsoluteTickMessage] = []
     for i, track in enumerate(midi_song.tracks):
         abs_tick = 0
-        for msg in track:
+        for j, msg in enumerate(track):
             abs_tick += msg.time
             all_msgs_with_abs_ticks.append(
-                AbsoluteTickMessage(tick=abs_tick, track=i, msg=msg))
-    # note_on and note_off should come after other messages
-    all_msgs_with_abs_ticks.sort(
-        key=lambda m: (m.tick, 0 if m.msg.type not in ("note_on", "note_off") else 1))
+                AbsoluteTickMessage(tick=abs_tick, track=i, msg=msg, msg_idx=j))
+    # Update the sort, time first, then track, then order within the track
+    all_msgs_with_abs_ticks.sort(key=lambda m: (m.tick, m.track, m.msg_idx))
 
     # Now we can convert absolute ticks to absolute time, but we need to keep track of
     # tempo changes and MIDI port changes as well (they are also chronological)
@@ -72,6 +72,17 @@ def build_timeline(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
     last_abs_ticks = 0  # in MIDI ticks (*_ticks is MIDI ticks)
 
     track_ports = {i: 0 for i in range(len(midi_song.tracks))}
+    # Prescan each track for the first meta midi_port message
+    # Although technically we shouldn't need to do this, some notation software (notably
+    # MuseScore in my testing) seem to skip midi_port for the first batch of CCs and PC
+    # in every track, and so CCs and PCs go to port 0 while the note data goes to
+    # another port
+    # This sets up a default port that usually works
+    for i, track in enumerate(midi_song.tracks):
+        for msg in track:
+            if msg.type == "midi_port":
+                track_ports[i] = msg.port
+                break
 
     for item in all_msgs_with_abs_ticks:
         msg = item.msg
@@ -144,11 +155,7 @@ def find_instrument_data_for_timeline(timeline: List[AbsoluteTimeMessage]) -> Li
     # Initialize channel states, which keep track of the bank_select and program per
     # channel and port
     channel_states = {}
-    highest_port = 0
-    try:
-        highest_port = max([highest_port] + [m.port for m in timeline])
-    except ValueError:
-        pass
+    highest_port = max([m.port for m in timeline], default=0)
     for port in range(highest_port + 1):
         for channel in range(16):
             # By default, channel 10 starts as drum
@@ -178,10 +185,7 @@ def find_instrument_data_for_timeline(timeline: List[AbsoluteTimeMessage]) -> Li
             is_drum_bank = (
                     channel_states[(port, channel)].bank_select_msb in (120, 121,
                                                                         126,
-                                                                        127, 128) or
-                    channel_states[(port, channel)].bank_select_lsb in (120, 121,
-                                                                        126,
-                                                                        127, 128) or
+                                                                        127) or
                     channel == 9
             )
             # Only override if last drum determination was weaker than CC
