@@ -1,10 +1,9 @@
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List
+from typing import Dict, List, Tuple
 
-from mido import MidiFile, tick2second
-from mido.messages.messages import Message
+from mido import Message, MidiFile, tick2second
 
 from arcade.music_types import Song
 from utils.logger import create_logger
@@ -27,7 +26,7 @@ class AbsoluteTimeMessage:
     msg: Message  # note_on, note_off, program_change, control_change (where control = 0)
 
 
-def build_timeline(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
+def timeline_build(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
     """
     Look through all tracks and convert MIDI's delta tick time to absolute time in
     seconds while keeping track of tempo and port changes.
@@ -138,7 +137,7 @@ class AbsoluteTimeMessageWithInstrument:
     msg: Message  # note_on and note_off
 
 
-def find_instrument_data_for_timeline(timeline: List[AbsoluteTimeMessage]) -> List[
+def timeline_find_instrument_data(timeline: List[AbsoluteTimeMessage]) -> List[
     AbsoluteTimeMessageWithInstrument]:
     """
     Parse the timeline for program_change and control_change (control = 0) messages to
@@ -265,9 +264,96 @@ def find_instrument_data_for_timeline(timeline: List[AbsoluteTimeMessage]) -> Li
             ))
     logger.debug(f"Global timeline has {len(timeline_with_instrument)} note messages ("
                  f"processed {instr_msgs_processed} instrument messages, "
-                 f"{sysex_msgs_processed} of which were SysEx messages)")
+                 f"{sysex_msgs_processed} of which were recognized SysEx messages)")
 
     return timeline_with_instrument
+
+
+@dataclass
+class AbsoluteCompleteNote:
+    start_time: float
+    end_time: float
+
+    note: int
+    velocity: int
+
+    instrument: int
+    is_drum: bool
+
+
+def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -> List[
+    AbsoluteCompleteNote]:
+    """
+    Parse the timeline for note_on and note_off messages to determine the start and end
+    times of each note.
+
+    :param timeline: A list of `AbsoluteTimeMessageWithInstrument` objects.
+    :return: A list of `AbsoluteCompleteNote` objects.
+    """
+    # Find all note_on and note_on (velocity = 0) and note_off messages, and pair them
+    # up
+    logger.debug("Grouping messages into complete notes in the timeline")
+
+    timeline_with_complete_notes = []
+    highest_port = max([0] + [m.port for m in timeline])
+    active_notes: Dict[Tuple[int, int], List[AbsoluteCompleteNote]] = {
+        (port, channel): []
+        for port in range(highest_port + 1)
+        for channel in range(16)
+    }
+    last_time = 0
+
+    current_poly = 0
+    max_poly = 0
+
+    for item in timeline:
+        msg = item.msg
+        port_and_channel = (item.port, msg.channel)
+        last_time = max(last_time, item.time)
+
+        if msg.type == "note_on" and msg.velocity > 0:
+            # add to the list of playing notes
+            active_notes[port_and_channel].append(
+                AbsoluteCompleteNote(
+                    start_time=item.time,
+                    end_time=item.time,  # will be updated when note_off found
+                    note=msg.note,
+                    velocity=msg.velocity,
+                    instrument=item.instrument,
+                    is_drum=item.is_drum,
+                )
+            )
+            current_poly += 1
+        elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
+            # find the playing note and finish it
+            for playing_note in active_notes[port_and_channel]:
+                if playing_note.note == msg.note:
+                    playing_note.end_time = item.time
+                    timeline_with_complete_notes.append(playing_note)
+                    active_notes[port_and_channel].remove(playing_note)
+                    current_poly -= 1
+                    break
+            else:
+                logger.warning(f"Could not find start of note for {item}")
+        max_poly = max(max_poly, current_poly)
+
+    # handle hanging notes
+    hanging_count = 0
+    for group_key in active_notes:
+        for playing_note in active_notes[group_key]:
+            playing_note.end_time = last_time
+            timeline_with_complete_notes.append(playing_note)
+            hanging_count += 1
+            # no need to remove we're cleaning up
+
+    # sort by start instead of when they ended
+    timeline_with_complete_notes.sort(key=lambda m: m.start_time)
+
+    logger.debug(f"Global timeline has {len(timeline_with_complete_notes)} note events "
+                 f"(maximum polyphony across all channels and ports was {max_poly} "
+                 f"notes and had to clean up {hanging_count} hanging notes)")
+
+    return timeline_with_complete_notes
 
 
 def convert_midi_to_song(midi_song: MidiFile) -> Song:
@@ -278,6 +364,7 @@ def convert_midi_to_song(midi_song: MidiFile) -> Song:
     :return: MakeCode Arcade `Song` object.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
-    global_timeline = build_timeline(midi_song)
-    global_timeline = find_instrument_data_for_timeline(global_timeline)
+    global_timeline = timeline_build(midi_song)
+    global_timeline = timeline_find_instrument_data(global_timeline)
+    global_timeline = timeline_group_messages(global_timeline)
     pass
