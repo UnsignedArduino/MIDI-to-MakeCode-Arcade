@@ -88,8 +88,8 @@ logger = create_logger(name=__name__, level=logging.INFO)
 @dataclass
 class Instrument:
     waveform: int
-    amp_envelope: Envelope
     octave: int
+    amp_envelope: Envelope
     pitch_envelope: Optional[Envelope] = None
     amp_lfo: Optional[LFO] = None
     pitch_lfo: Optional[LFO] = None

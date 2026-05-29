@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 from mido import Message, MidiFile, tick2second
 
 from arcade.music_types import Song
+from converter.instruments import InstrumentParameterMapping
 from utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
@@ -356,15 +357,52 @@ def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -
     return timeline_with_complete_notes
 
 
-def convert_midi_to_song(midi_song: MidiFile) -> Song:
+def find_all_melodic_instruments(timeline: List[AbsoluteCompleteNote]) -> List[int]:
+    """
+    Search the timeline for all unique melodic instruments.
+
+    :param timeline: A list of `AbsoluteTimeMessage` objects.
+    :return: A list of ints, representing what general MIDI instruments are in the song.
+    """
+    logger.debug("Finding all melodic instruments in the timeline")
+
+    return list(set([m.instrument for m in timeline if not m.is_drum]))
+
+
+def find_is_drum_used(timeline: List[AbsoluteCompleteNote]) -> bool:
+    """
+    Search the timeline if any drum instruments are used. Since we only support the
+    default drum kit, it's a boolean result.
+
+    :param timeline: A list of `AbsoluteTimeMessage` objects.
+    :return: A bool on whether a drum instrument is used in the song.
+    """
+    logger.debug("Finding if any drum instruments are used in the timeline")
+
+    return any([m.is_drum for m in timeline])
+
+
+def convert_midi_to_song(midi_song: MidiFile,
+                         mapping: InstrumentParameterMapping) -> Song:
     """
     Convert a MIDI file into a MakeCode Arcade song.
 
-    :param midi_song: `MidiFile` object.
+    :param midi_song: A `MidiFile` object.
+    :param mapping: An `InstrumentParameterMapping` object, loaded from
+     `load_instrument_params`.
     :return: MakeCode Arcade `Song` object.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
-    global_timeline = timeline_build(midi_song)
-    global_timeline = timeline_find_instrument_data(global_timeline)
-    global_timeline = timeline_group_messages(global_timeline)
+    global_timeline: List[AbsoluteTimeMessage] = timeline_build(midi_song)
+    global_timeline: List[
+        AbsoluteTimeMessageWithInstrument] = timeline_find_instrument_data(
+        global_timeline)
+    global_timeline: List[AbsoluteCompleteNote] = timeline_group_messages(
+        global_timeline)
+
+    melodics_used = find_all_melodic_instruments(global_timeline)
+    drum_used = find_is_drum_used(global_timeline)
+    logger.debug(f"Song used {len(melodics_used)} melodic instruments and "
+                 f"{"used" if drum_used else "did not use"} the drum instrument")
+
     pass
