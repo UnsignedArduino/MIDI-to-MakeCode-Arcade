@@ -1,11 +1,12 @@
 import logging
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Dict, List, Tuple
 
 from mido import Message, MidiFile, tick2second
 
-from arcade.music_types import Song
+from arcade.music_types import Envelope, Instrument, Song, Track
 from converter.instruments import InstrumentParameterMapping
 from utils.logger import create_logger
 
@@ -366,20 +367,110 @@ def find_all_melodic_instruments(timeline: List[AbsoluteCompleteNote]) -> List[i
     """
     logger.debug("Finding all melodic instruments in the timeline")
 
-    return list(set([m.instrument for m in timeline if not m.is_drum]))
+    return list(sorted(set([m.instrument for m in timeline if not m.is_drum])))
 
 
-def find_is_drum_used(timeline: List[AbsoluteCompleteNote]) -> bool:
+def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNote]) -> List[int]:
     """
-    Search the timeline if any drum instruments are used. Since we only support the
-    default drum kit, it's a boolean result.
+    Search the timeline for all unique drum notes.
 
     :param timeline: A list of `AbsoluteTimeMessage` objects.
-    :return: A bool on whether a drum instrument is used in the song.
+    :return: A list of ints, representing what general MIDI drum notes are in the song.
     """
-    logger.debug("Finding if any drum instruments are used in the timeline")
+    logger.debug("Finding all drum notes in the timeline")
 
-    return any([m.is_drum for m in timeline])
+    return list(sorted(set([m.note for m in timeline if m.is_drum])))
+
+
+@dataclass
+class MIDIInstrumentMappingToTrackIDs:
+    # Map from MIDI instrument number to track IDs
+    # First in the tuple is the low track (MIDI notes 0-63, octave=2),
+    # second is the high track (MIDI notes 64-127, octave=7)
+    melodic_tracks: Dict[int, Tuple[int, int]]
+    # Track index for the drum track
+    drum_track: int
+    # Map from MIDI drum notes to DrumInstrument indicies in the track's drums
+    drum_notes: Dict[int, int]
+
+
+def assemble_song(melodics_used: List[int], drums_used: List[int],
+                  mapping: InstrumentParameterMapping) -> Tuple[
+    Song, MIDIInstrumentMappingToTrackIDs]:
+    """
+    Given a list of melodic instruments and whether the drum was used or not, assemble
+    an empty MakeCode Arcade song with the appropriate tracks, using the instrument
+    parameter mapping.
+
+    :param melodics_used: A list of general MIDI melodic instrument indicies (ints) that
+     are used in the song.
+    :param drums_used: A list of general MIDI drum notes (ints) that are used in the
+     song.
+    :param mapping: The `InstrumentParameterMapping` object, loaded from
+     `load_instrument_params`.
+    :return: MakeCode Arcade `Song` object with the correct tracks loaded.
+    """
+    logger.debug(f"Assembling song with {len(melodics_used)} melodic instruments and "
+                 f"{len(drums_used)} drum notes")
+
+    song = Song(  # TODO FIGURE OUT GOOD SETTINGS FOR THESE THREE
+        measures=0,
+        beats_per_measure=4,
+        beats_per_minute=120,
+        ticks_per_beat=8,
+        tracks=[]
+    )
+    id_map = MIDIInstrumentMappingToTrackIDs(melodic_tracks={}, drum_track=-1,
+                                             drum_notes={})
+    next_track_id = 0
+
+    for melodic in melodics_used:
+        id_map.melodic_tracks[melodic] = (next_track_id, next_track_id + 1)
+
+        low_track = Track(
+            id=next_track_id,
+            instrument=deepcopy(mapping.melodic_instruments[melodic]),
+            notes=[],
+            name=f"MIDI instrument {melodic} low track",
+        )
+        low_track.instrument.octave = 2
+        next_track_id += 1
+
+        high_track = Track(
+            id=next_track_id,
+            instrument=deepcopy(mapping.melodic_instruments[melodic]),
+            notes=[],
+            name=f"MIDI instrument {melodic} high track",
+        )
+        high_track.instrument.octave = 7
+        next_track_id += 1
+
+        song.tracks.append(low_track)
+        song.tracks.append(high_track)
+
+    if len(drums_used) > 0:
+        id_map.drum_track = next_track_id
+        song.tracks.append(Track(
+            id=next_track_id,
+            drums=[],
+            instrument=Instrument(
+                waveform=11,
+                octave=4,
+                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
+                                      amplitude=1024)
+            ),
+            name="MIDI drum track",
+            notes=[]
+        ))
+
+        next_drum_index = 0
+        for drum in drums_used:
+            id_map.drum_notes[drum] = next_drum_index
+            # noinspection PyUnresolvedReferences
+            song.tracks[-1].drums.append(mapping.drum_instruments[drum])
+            next_drum_index += 1
+
+    return song, id_map
 
 
 def convert_midi_to_song(midi_song: MidiFile,
@@ -393,6 +484,7 @@ def convert_midi_to_song(midi_song: MidiFile,
     :return: MakeCode Arcade `Song` object.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
+
     global_timeline: List[AbsoluteTimeMessage] = timeline_build(midi_song)
     global_timeline: List[
         AbsoluteTimeMessageWithInstrument] = timeline_find_instrument_data(
@@ -401,8 +493,10 @@ def convert_midi_to_song(midi_song: MidiFile,
         global_timeline)
 
     melodics_used = find_all_melodic_instruments(global_timeline)
-    drum_used = find_is_drum_used(global_timeline)
+    drums_used = find_all_drum_notes_used(global_timeline)
     logger.debug(f"Song used {len(melodics_used)} melodic instruments and "
-                 f"{"used" if drum_used else "did not use"} the drum instrument")
+                 f"{len(drums_used)} unique drum notes")
 
-    pass
+    song, track_id_map = assemble_song(melodics_used, drums_used, mapping)
+
+    return song

@@ -82,7 +82,9 @@ def load_instrument_params(yaml_text: str) -> InstrumentParameterMapping:
     logger.debug(f"Creating mappings for {len(data["melodic_instruments"])} melodic "
                  f"instruments")
     for instr in data["melodic_instruments"]:
-        mapping.melodic_instruments[instr["instrument"]] = Instrument(
+        # TODO: Make people define instrument_params.yaml from 0-127
+        mapping.melodic_instruments[instr["instrument"] - 1] = Instrument(
+
             waveform=waveform_from_str(instr["waveform"]),
             # Each note can range from 0-63, so we'll have two tracks, each with the
             # same two instruments but at different octave offsets

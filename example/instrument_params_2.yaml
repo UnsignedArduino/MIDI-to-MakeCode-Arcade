@@ -34,10 +34,11 @@ https://arcade.makecode.com/developer/sound
 > like a noise-distorted square wave, with short cycles being more regular and 
 > long cycles being noisier.
 "
-_comment2: 'MakeCode Arcade GM instrument parameter map. All envelope times in ms. sustain/amplitude values 0-1024. LFO frequency
-  in Hz. Waveforms: triangle=1 sawtooth=2 sine=3 noise_tunable=4 noise=5 square_10=11 square_20=12 square_30=13 square_40=14
-  square_50=15 cycle_16=16 cycle_32=17 cycle_64=18. noise ignores pitch. noise_tunable is pitch-dependent (high=white noise,
-  low=crackling). cycle_N are periodic pseudo-random patterns (shorter = more regular).'
+_comment2: 'MakeCode Arcade GM1/GM2 instrument parameter map. All envelope times in ms. sustain/amplitude values 0-1024. LFO
+  frequency in Hz. Waveforms: triangle=1 sawtooth=2 sine=3 noise_tunable=4 noise=5 square_10=11 square_20=12 square_30=13
+  square_40=14 square_50=15 cycle_16=16 cycle_32=17 cycle_64=18. noise ignores pitch. noise_tunable is pitch-dependent (high=white
+  noise, low=crackling). cycle_N are periodic pseudo-random patterns (shorter = more regular). Drum notes: GM2 extended range
+  27-87 (GM1 was 35-81). Notes 71-74 and 78-79 are unassigned in both GM1 and GM2.'
 melodic_instruments:
   - instrument: 1
     _comment: Acoustic Grand Piano
@@ -936,6 +937,66 @@ melodic_instruments:
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
 drum_instruments:
+  - note: 27
+    _comment: High Q
+    start_freq: 3500
+    start_vol: 900
+    steps:
+      - { waveform: cycle_16, target_freq: 2800, target_vol: 500, duration: 5 }
+      - { waveform: cycle_16, target_freq: 2000, target_vol: 0, duration: 8 }
+  - note: 28
+    _comment: Slap
+    start_freq: 300
+    start_vol: 1000
+    steps:
+      - { waveform: noise_tunable, target_freq: 400, target_vol: 700, duration: 12 }
+      - { waveform: noise_tunable, target_freq: 250, target_vol: 200, duration: 30 }
+      - { waveform: noise_tunable, target_freq: 150, target_vol: 0, duration: 35 }
+  - note: 29
+    _comment: Scratch Push
+    start_freq: 200
+    start_vol: 950
+    steps:
+      - { waveform: noise_tunable, target_freq: 600, target_vol: 800, duration: 30 }
+      - { waveform: noise_tunable, target_freq: 1200, target_vol: 500, duration: 40 }
+      - { waveform: noise_tunable, target_freq: 2000, target_vol: 0, duration: 30 }
+  - note: 30
+    _comment: Scratch Pull
+    start_freq: 2000
+    start_vol: 950
+    steps:
+      - { waveform: noise_tunable, target_freq: 1200, target_vol: 800, duration: 30 }
+      - { waveform: noise_tunable, target_freq: 500, target_vol: 500, duration: 40 }
+      - { waveform: noise_tunable, target_freq: 200, target_vol: 0, duration: 30 }
+  - note: 31
+    _comment: Sticks
+    start_freq: 4000
+    start_vol: 850
+    steps:
+      - { waveform: cycle_16, target_freq: 3200, target_vol: 400, duration: 6 }
+      - { waveform: cycle_16, target_freq: 2400, target_vol: 0, duration: 10 }
+  - note: 32
+    _comment: Square Click
+    start_freq: 1800
+    start_vol: 900
+    steps:
+      - { waveform: cycle_16, target_freq: 1400, target_vol: 500, duration: 8 }
+      - { waveform: cycle_16, target_freq: 1000, target_vol: 0, duration: 12 }
+  - note: 33
+    _comment: Metronome Click
+    start_freq: 1400
+    start_vol: 870
+    steps:
+      - { waveform: cycle_16, target_freq: 1100, target_vol: 450, duration: 8 }
+      - { waveform: cycle_16, target_freq: 800, target_vol: 0, duration: 14 }
+  - note: 34
+    _comment: Metronome Bell
+    start_freq: 2800
+    start_vol: 870
+    steps:
+      - { waveform: sine, target_freq: 2600, target_vol: 500, duration: 40 }
+      - { waveform: sine, target_freq: 2400, target_vol: 150, duration: 150 }
+      - { waveform: sine, target_freq: 2200, target_vol: 0, duration: 150 }
   - note: 35
     _comment: Acoustic Bass Drum
     start_freq: 150
@@ -1235,6 +1296,23 @@ drum_instruments:
     steps:
       - { waveform: cycle_16, target_freq: 1000, target_vol: 400, duration: 15 }
       - { waveform: cycle_16, target_freq: 750, target_vol: 0, duration: 28 }
+  - note: 78
+    _comment: Mute Cuica
+    start_freq: 600
+    start_vol: 950
+    steps:
+      - { waveform: noise_tunable, target_freq: 450, target_vol: 700, duration: 20 }
+      - { waveform: noise_tunable, target_freq: 300, target_vol: 200, duration: 40 }
+      - { waveform: noise_tunable, target_freq: 200, target_vol: 0, duration: 35 }
+  - note: 79
+    _comment: Open Cuica
+    start_freq: 500
+    start_vol: 950
+    steps:
+      - { waveform: noise_tunable, target_freq: 900, target_vol: 800, duration: 35 }
+      - { waveform: noise_tunable, target_freq: 700, target_vol: 500, duration: 80 }
+      - { waveform: noise_tunable, target_freq: 500, target_vol: 100, duration: 100 }
+      - { waveform: noise_tunable, target_freq: 350, target_vol: 0, duration: 80 }
   - note: 80
     _comment: Mute Triangle
     start_freq: 4000
@@ -1250,3 +1328,51 @@ drum_instruments:
       - { waveform: sine, target_freq: 3900, target_vol: 500, duration: 90 }
       - { waveform: sine, target_freq: 3750, target_vol: 200, duration: 280 }
       - { waveform: sine, target_freq: 3600, target_vol: 0, duration: 300 }
+  - note: 82
+    _comment: Shaker
+    start_freq: 5000
+    start_vol: 750
+    steps:
+      - { waveform: noise, target_freq: 5000, target_vol: 550, duration: 18 }
+      - { waveform: noise, target_freq: 5000, target_vol: 200, duration: 35 }
+      - { waveform: noise, target_freq: 5000, target_vol: 0, duration: 30 }
+  - note: 83
+    _comment: Hi Half-Open Hi-Hat
+    start_freq: 8000
+    start_vol: 800
+    steps:
+      - { waveform: noise, target_freq: 8000, target_vol: 500, duration: 18 }
+      - { waveform: noise, target_freq: 8000, target_vol: 150, duration: 45 }
+      - { waveform: noise, target_freq: 8000, target_vol: 0, duration: 45 }
+  - note: 84
+    _comment: High Hi-Hat
+    start_freq: 9000
+    start_vol: 780
+    steps:
+      - { waveform: noise, target_freq: 9000, target_vol: 550, duration: 40 }
+      - { waveform: noise, target_freq: 9000, target_vol: 180, duration: 80 }
+      - { waveform: noise, target_freq: 9000, target_vol: 0, duration: 90 }
+  - note: 85
+    _comment: Crash Cymbal 3
+    start_freq: 6500
+    start_vol: 1000
+    steps:
+      - { waveform: noise, target_freq: 6500, target_vol: 700, duration: 70 }
+      - { waveform: noise, target_freq: 6500, target_vol: 300, duration: 200 }
+      - { waveform: noise, target_freq: 6500, target_vol: 0, duration: 300 }
+  - note: 86
+    _comment: Ride Cymbal 3
+    start_freq: 5500
+    start_vol: 720
+    steps:
+      - { waveform: noise, target_freq: 5500, target_vol: 420, duration: 40 }
+      - { waveform: noise, target_freq: 5500, target_vol: 120, duration: 80 }
+      - { waveform: noise, target_freq: 5500, target_vol: 0, duration: 110 }
+  - note: 87
+    _comment: Open Hi-Hat 2
+    start_freq: 8000
+    start_vol: 820
+    steps:
+      - { waveform: noise, target_freq: 8000, target_vol: 650, duration: 60 }
+      - { waveform: noise, target_freq: 8000, target_vol: 250, duration: 130 }
+      - { waveform: noise, target_freq: 8000, target_vol: 0, duration: 140 }
