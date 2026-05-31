@@ -507,17 +507,17 @@ def timeline_split_into_two_tracks_if_needed(
             return ((((octave - 2) * 12) <= lowest_note) and
                     (highest_note <= ((octave - 2) * 12 + 63)))
 
-        # does ANY octave offset from [2, 7] work?
-        if any([octave_offset_work(o) for o in range(2, 8)]):
+        # does ANY octave offset from [0, 9] work?
+        if any([octave_offset_work(o) for o in range(0, 10)]):
             # we don't need to modify, when constructing the MakeCode Arcade Tracks,
             # we'll find the correct octave offset again
             new_tracks.append(old_track)
             tracks_that_fit += 1
         else:
-            # split into two tracks, using octave offsets 2 and 7 guarantee covering the
-            # full MIDI range
-            low_track = [n for n in old_track if n.note < 64]
-            high_track = [n for n in old_track if n.note >= 64]
+            # split into two tracks, using octave offsets 0 and 6 guarantee covering the
+            # full shifted MIDI range
+            low_track = [n for n in old_track if n.note < 41]
+            high_track = [n for n in old_track if n.note >= 41]
             new_tracks.append(low_track)
             new_tracks.append(high_track)
             tracks_that_split += 1
@@ -674,7 +674,7 @@ def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
                 return ((((octave - 2) * 12) <= lowest_note) and
                         (highest_note <= ((octave - 2) * 12 + 63)))
 
-            if not any([octave_offset_work(o) for o in range(2, 8)]):
+            if not any([octave_offset_work(o) for o in range(0, 10)]):
                 raise ValueError(f"Track range too big to fit! (please report)")
         # Chord must have less than 256 notes
         max_chord_polyphony = max([len(chord.notes) for chord in track])
@@ -734,6 +734,17 @@ def convert_midi_to_song(midi_song: MidiFile,
         global_timeline)
     global_timeline: List[AbsoluteCompleteNote] = timeline_group_messages(
         global_timeline)
+
+    # MIDI file with C4 (MIDI 60) plays at B5 (MIDI 83)
+    # This is because MakeCode Arcade defines C4 as 49 instead of 60
+    # And now I have no idea why I need to shift down another octave but then it works
+    # Drums don't need this because we already map from MIDI drum notes to an index into
+    # a list of drum instruments in a track, which we control
+    for note in global_timeline:
+        if not note.is_drum:
+            note.note -= 11  # MIDI 60 (C4) maps to Arcade's C4 of 49
+            note.note -= 12  # another octave down makes it correct
+
     global_timeline: List[
         AbsoluteCompleteNoteWithTick] = timeline_quantize_to_song_ticks(global_timeline,
                                                                         song)
@@ -791,7 +802,7 @@ def convert_midi_to_song(midi_song: MidiFile,
                 return ((((octave - 2) * 12) <= lowest_note) and
                         (highest_note <= ((octave - 2) * 12 + 63)))
 
-            for potential_offset in range(2, 8):  # find the first offset that works
+            for potential_offset in range(0, 10):  # find the first offset that works
                 if octave_offset_work(potential_offset):
                     instrument.octave = potential_offset
                     break
