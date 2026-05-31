@@ -810,8 +810,7 @@ def convert_midi_to_song(midi_song: MidiFile,
                 notes = [midi_drum_to_drum_idx[note] for note in
                          chord.notes]
             else:
-                offset = (instrument.octave - 2) * 12
-                notes = [note - offset for note in chord.notes]
+                notes = chord.notes
             new_track.notes.append(NoteEvent(
                 notes=[Note(note=n, enharmonic_spelling=EnharmonicSpelling.NORMAL) for n
                        in notes],
