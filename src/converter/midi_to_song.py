@@ -575,6 +575,53 @@ def timeline_group_into_perfect_chords(
     return new_tracks
 
 
+def timeline_resolve_overlapping_chords(
+        timeline: List[List[AbsoluteCompleteChordWithTick]]) -> List[
+    List[AbsoluteCompleteChordWithTick]]:
+    """
+    Go through the melodic tracks in the timeline and check for chords overlapping in a
+    track. If they are, move them to an extra track. If there are no free tracks, create
+    one. This minimizes the number of extra tracks required while keeping the desired
+    polyphony of MIDI.
+
+    :param timeline: A list of lists of `AbsoluteCompleteChordWithTick` objects.
+    :return: A list of lists of `AbsoluteCompleteChordWithTick` objects.
+    """
+    logger.debug("Resolving overlapping chords")
+
+    new_tracks: List[List[AbsoluteCompleteChordWithTick]] = []
+    old_track_count = len(timeline)
+
+    for old_track in timeline:
+        new_sub_tracks: List[List[AbsoluteCompleteChordWithTick]] = [[]]
+
+        # don't have to worry about instrument matching because chords in old_track
+        # should all have the same instrument
+        for chord in old_track:
+            # try to place into a sub track
+            for sub_track in new_sub_tracks:
+                # if the last note in the subtrack has ended (or it's empty)
+                # TODO: Test if this needs to be < or <= works
+                #  theoretically it should work fine with <= (and this will save tracks)
+                #  but < will guarantee a "rest"
+                if len(sub_track) == 0 or sub_track[-1].end_tick < chord.start_tick:
+                    sub_track.append(chord)
+                    break
+            else:
+                # no free sub tracks, create
+                new_sub_tracks.append([chord])
+
+        # dump all generated sub tracks directly into the new timeline
+        new_tracks.extend(new_sub_tracks)
+
+    new_track_count = len(new_tracks)
+    logger.debug(f"Created {new_track_count - old_track_count} extra tracks to handle "
+                 f"overlapping chords (from {old_track_count} to {new_track_count} "
+                 f"tracks)")
+
+    return new_tracks
+
+
 def convert_midi_to_song(midi_song: MidiFile,
                          mapping: InstrumentParameterMapping) -> Song:
     """
@@ -611,6 +658,9 @@ def convert_midi_to_song(midi_song: MidiFile,
     global_timeline = timeline_split_into_two_tracks_if_needed(global_timeline)
     global_timeline: List[
         List[AbsoluteCompleteChordWithTick]] = timeline_group_into_perfect_chords(
+        global_timeline)
+    global_timeline: List[
+        List[AbsoluteCompleteChordWithTick]] = timeline_resolve_overlapping_chords(
         global_timeline)
 
     return song
