@@ -1,12 +1,12 @@
 import logging
-from copy import deepcopy
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Dict, List, Tuple
 
 from mido import Message, MidiFile, tick2second
 
-from arcade.music_types import Envelope, Instrument, Song, Track
+from arcade.music_types import Song
 from converter.instruments import InstrumentParameterMapping
 from utils.logger import create_logger
 
@@ -358,7 +358,52 @@ def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -
     return timeline_with_complete_notes
 
 
-def find_all_melodic_instruments(timeline: List[AbsoluteCompleteNote]) -> List[int]:
+@dataclass
+class AbsoluteCompleteNoteWithTick:
+    start_tick: int
+    end_tick: int
+
+    note: int
+    velocity: int
+
+    instrument: int
+    is_drum: bool
+
+
+def timeline_quantize_to_song_ticks(timeline: List[AbsoluteCompleteNote],
+                                    song: Song) -> List[AbsoluteCompleteNoteWithTick]:
+    """
+    Given the song's BPM and TPB, quantize the timeline's start and end times to ticks.
+
+    :param timeline: A list of `AbsoluteCompleteNote` objects.
+    :param song: The `Song` object to use.
+    :return: A list of `AbsoluteCompleteNoteWithTick` objects.
+    """
+    tick_time = (60 / song.beats_per_minute) / song.ticks_per_beat  # in secs
+    logger.debug(f"Quantizing note times to ticks based of song BPM of "
+                 f"{song.beats_per_minute} and TPB of {song.ticks_per_beat} - one tick "
+                 f"is 1/{1 / tick_time} ({tick_time}) seconds long")
+
+    res = []
+
+    for old_note in timeline:
+        new_start_tick = round(old_note.start_time / tick_time)
+        # Ensure all notes last for one tick
+        new_end_tick = max(round(old_note.end_time / tick_time), new_start_tick + 1)
+        res.append(AbsoluteCompleteNoteWithTick(
+            start_tick=new_start_tick,
+            end_tick=new_end_tick,
+            note=old_note.note,
+            velocity=old_note.velocity,
+            instrument=old_note.instrument,
+            is_drum=old_note.is_drum
+        ))
+
+    return res
+
+
+def find_all_melodic_instruments(timeline: List[AbsoluteCompleteNoteWithTick]) -> List[
+    int]:
     """
     Search the timeline for all unique melodic instruments.
 
@@ -370,7 +415,7 @@ def find_all_melodic_instruments(timeline: List[AbsoluteCompleteNote]) -> List[i
     return list(sorted(set([m.instrument for m in timeline if not m.is_drum])))
 
 
-def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNote]) -> List[int]:
+def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNoteWithTick]) -> List[int]:
     """
     Search the timeline for all unique drum notes.
 
@@ -382,95 +427,152 @@ def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNote]) -> List[int]:
     return list(sorted(set([m.note for m in timeline if m.is_drum])))
 
 
+def timeline_group_by_instrument(timeline: List[AbsoluteCompleteNoteWithTick]) -> List[
+    List[AbsoluteCompleteNoteWithTick]]:
+    """
+    Split up the timeline by instrument.
+
+    :param timeline: A list of `AbsoluteCompleteNote` objects.
+    :return: A list of lists of `AbsoluteCompleteNoteWithTick` objects. (Each list of
+     notes within the list have the same instrument)
+    """
+    logger.debug("Splitting up the timeline by instruments")
+
+    used_melodics = find_all_melodic_instruments(timeline)
+    used_drums = find_all_drum_notes_used(timeline)
+    logger.debug(f"Song used {len(used_melodics)} melodic instruments and "
+                 f"{len(used_drums)} unique drum notes")
+
+    tracks = []
+
+    for melodic in used_melodics:
+        tracks.append([note for note in timeline if
+                       note.instrument == melodic and not note.is_drum])
+
+    if len(used_drums) > 0:
+        tracks.append([note for note in timeline if note.is_drum])
+
+    logger.debug(f"Split up global timeline into {len(tracks)} tracks")
+
+    return tracks
+
+
+def timeline_split_into_two_tracks_if_needed(
+        timeline: List[List[AbsoluteCompleteNoteWithTick]]) -> List[
+    List[AbsoluteCompleteNoteWithTick]]:
+    """
+    Go through the melodic tracks in the timeline and check the highest and lowest note
+    in each track. If it can't fit into one track (which has a range limit of 64 notes
+    from an octave offset) then we use two tracks and move notes as necessary.
+
+    :param timeline: A list of lists of `AbsoluteCompleteNote` objects.
+    :return: A list of lists of `AbsoluteCompleteNoteWithTick` objects.
+    """
+    logger.debug("Checking necessity to split track into two tracks for range")
+
+    new_tracks: List[List[AbsoluteCompleteNoteWithTick]] = []
+
+    tracks_that_fit = 0
+    tracks_that_split = 0
+
+    for old_track in timeline:
+        # drum tracks don't use octave offsets, only 61 samples max as well
+        if old_track[0].is_drum:
+            new_tracks.append(old_track)
+            tracks_that_fit += 1
+            continue
+
+        all_notes = [n.note for n in old_track]
+        highest_note = max(all_notes)
+        lowest_note = min(all_notes)
+
+        def octave_offset_work(octave: int) -> bool:
+            return ((((octave - 2) * 12) <= lowest_note) and
+                    (highest_note <= ((octave - 2) * 12 + 63)))
+
+        # does ANY octave offset from [2, 7] work?
+        if any([octave_offset_work(o) for o in range(2, 8)]):
+            # we don't need to modify, when constructing the MakeCode Arcade Tracks,
+            # we'll find the correct octave offset again
+            new_tracks.append(old_track)
+            tracks_that_fit += 1
+        else:
+            # split into two tracks, using octave offsets 2 and 7 guarantee covering the
+            # full MIDI range
+            low_track = [n for n in old_track if n.note < 64]
+            high_track = [n for n in old_track if n.note >= 64]
+            new_tracks.append(low_track)
+            new_tracks.append(high_track)
+            tracks_that_split += 1
+
+    logger.debug(f"{tracks_that_fit} tracks fit within one track's range, "
+                 f"{tracks_that_split} tracks had to split, total of {len(new_tracks)} "
+                 f"tracks in timeline")
+
+    return new_tracks
+
+
 @dataclass
-class MIDIInstrumentMappingToTrackIDs:
-    # Map from MIDI instrument number to track IDs
-    # First in the tuple is the low track (MIDI notes 0-63, octave=2),
-    # second is the high track (MIDI notes 64-127, octave=7)
-    melodic_tracks: Dict[int, Tuple[int, int]]
-    # Track index for the drum track
-    drum_track: int
-    # Map from MIDI drum notes to DrumInstrument indicies in the track's drums
-    drum_notes: Dict[int, int]
+class AbsoluteCompleteChordWithTick:
+    start_tick: int
+    end_tick: int
+
+    notes: List[int]
+    velocity: int
+
+    instrument: int
+    is_drum: bool
 
 
-def assemble_song(melodics_used: List[int], drums_used: List[int],
-                  mapping: InstrumentParameterMapping) -> Tuple[
-    Song, MIDIInstrumentMappingToTrackIDs]:
+def timeline_group_into_perfect_chords(
+        timeline: List[List[AbsoluteCompleteNoteWithTick]]) -> List[
+    List[AbsoluteCompleteChordWithTick]]:
     """
-    Given a list of melodic instruments and whether the drum was used or not, assemble
-    an empty MakeCode Arcade song with the appropriate tracks, using the instrument
-    parameter mapping.
+    Go through the tracks in the timeline and group up notes that share the same start
+    and end tick and velocity and instruments to create "perfect" chords.
 
-    :param melodics_used: A list of general MIDI melodic instrument indicies (ints) that
-     are used in the song.
-    :param drums_used: A list of general MIDI drum notes (ints) that are used in the
-     song.
-    :param mapping: The `InstrumentParameterMapping` object, loaded from
-     `load_instrument_params`.
-    :return: MakeCode Arcade `Song` object with the correct tracks loaded.
+    :param timeline: A list of lists of `AbsoluteCompleteNoteWithTick` objects.
+    :return: A list of lists of `AbsoluteCompleteChordWithTick` objects.
     """
-    logger.debug(f"Assembling song with {len(melodics_used)} melodic instruments and "
-                 f"{len(drums_used)} drum notes")
+    logger.debug("Grouping notes in timeline into perfect chords")
 
-    song = Song(  # TODO FIGURE OUT GOOD SETTINGS FOR THESE THREE
-        measures=0,
-        beats_per_measure=4,
-        beats_per_minute=120,
-        ticks_per_beat=8,
-        tracks=[]
-    )
-    id_map = MIDIInstrumentMappingToTrackIDs(melodic_tracks={}, drum_track=-1,
-                                             drum_notes={})
-    next_track_id = 0
+    new_tracks: List[List[AbsoluteCompleteChordWithTick]] = []
 
-    for melodic in melodics_used:
-        id_map.melodic_tracks[melodic] = (next_track_id, next_track_id + 1)
+    old_note_count = sum(len(track) for track in timeline)
 
-        low_track = Track(
-            id=next_track_id,
-            instrument=deepcopy(mapping.melodic_instruments[melodic]),
-            notes=[],
-            name=f"MIDI instrument {melodic} low track",
-        )
-        low_track.instrument.octave = 2
-        next_track_id += 1
+    for old_track in timeline:
+        # use dictionaries to quickly find existing chords
+        # key is a tuple of (start_tick, end_tick, velocity, instrument, is_drum)
+        # values are notes in the chord
+        chords: Dict[Tuple[int, int, int, int, bool], List[int]] = defaultdict(list)
 
-        high_track = Track(
-            id=next_track_id,
-            instrument=deepcopy(mapping.melodic_instruments[melodic]),
-            notes=[],
-            name=f"MIDI instrument {melodic} high track",
-        )
-        high_track.instrument.octave = 7
-        next_track_id += 1
+        for note in old_track:
+            key = (note.start_tick, note.end_tick, note.velocity, note.instrument,
+                   note.is_drum)
+            # if a note has the same start and end tick and velocity and instrument
+            # they can be played as a chord
+            chords[key].append(note.note)
 
-        song.tracks.append(low_track)
-        song.tracks.append(high_track)
+        new_track: List[AbsoluteCompleteChordWithTick] = []
+        for (start_tick, end_tick, velocity, instrument,
+             is_drum), notes in chords.items():
+            new_track.append(AbsoluteCompleteChordWithTick(
+                start_tick=start_tick, end_tick=end_tick,
+                notes=notes,
+                velocity=velocity,
+                instrument=instrument, is_drum=is_drum
+            ))
+        new_track.sort(key=lambda c: (c.start_tick, c.end_tick))
+        new_tracks.append(new_track)
 
-    if len(drums_used) > 0:
-        id_map.drum_track = next_track_id
-        song.tracks.append(Track(
-            id=next_track_id,
-            drums=[],
-            instrument=Instrument(
-                waveform=11,
-                octave=4,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
-                                      amplitude=1024)
-            ),
-            name="MIDI drum track",
-            notes=[]
-        ))
+    new_chord_count = sum(len(track) for track in new_tracks)
 
-        next_drum_index = 0
-        for drum in drums_used:
-            id_map.drum_notes[drum] = next_drum_index
-            # noinspection PyUnresolvedReferences
-            song.tracks[-1].drums.append(mapping.drum_instruments[drum])
-            next_drum_index += 1
+    logger.debug(f"Created "
+                 f"{sum([sum([1 if len(n.notes) > 1 else 0 for n in t]) for t in new_tracks])}"
+                 f" multi-note chords (dropped from {old_note_count} notes to "
+                 f"{new_chord_count} chords)")
 
-    return song, id_map
+    return new_tracks
 
 
 def convert_midi_to_song(midi_song: MidiFile,
@@ -492,11 +594,23 @@ def convert_midi_to_song(midi_song: MidiFile,
     global_timeline: List[AbsoluteCompleteNote] = timeline_group_messages(
         global_timeline)
 
-    melodics_used = find_all_melodic_instruments(global_timeline)
-    drums_used = find_all_drum_notes_used(global_timeline)
-    logger.debug(f"Song used {len(melodics_used)} melodic instruments and "
-                 f"{len(drums_used)} unique drum notes")
+    song = Song(
+        measures=1,
+        beats_per_measure=4,
+        beats_per_minute=120,  # beat every 1/2 seconds
+        ticks_per_beat=24,  # each tick is 1/48 seconds long
+        tracks=[]
+    )
 
-    song, track_id_map = assemble_song(melodics_used, drums_used, mapping)
+    global_timeline: List[
+        AbsoluteCompleteNoteWithTick] = timeline_quantize_to_song_ticks(global_timeline,
+                                                                        song)
+    global_timeline: List[
+        List[AbsoluteCompleteNoteWithTick]] = timeline_group_by_instrument(
+        global_timeline)
+    global_timeline = timeline_split_into_two_tracks_if_needed(global_timeline)
+    global_timeline: List[
+        List[AbsoluteCompleteChordWithTick]] = timeline_group_into_perfect_chords(
+        global_timeline)
 
     return song

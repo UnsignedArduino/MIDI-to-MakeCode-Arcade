@@ -35,896 +35,896 @@ https://arcade.makecode.com/developer/sound
 > long cycles being noisier.
 "
 melodic_instruments:
-  - instrument: 1
+  - instrument: 0
     _comment: Acoustic Grand Piano
     waveform: triangle
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 2
+  - instrument: 1
     _comment: Bright Acoustic Piano
     waveform: triangle
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 3
+  - instrument: 2
     _comment: Electric Grand Piano
     waveform: triangle
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 4
+  - instrument: 3
     _comment: Honky-tonk Piano
     waveform: sawtooth
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 5
+  - instrument: 4
     _comment: Electric Piano 1
     waveform: triangle
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 6
+  - instrument: 5
     _comment: Electric Piano 2
     waveform: triangle
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 7
+  - instrument: 6
     _comment: Harpsichord
     waveform: square_20
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 8
+  - instrument: 7
     _comment: Clavi
     waveform: sawtooth
     amp_envelope: { attack: 5, decay: 400, sustain: 100, release: 200, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 9
+  - instrument: 8
     _comment: Celesta
     waveform: sine
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 10
+  - instrument: 9
     _comment: Glockenspiel
     waveform: sine
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 11
+  - instrument: 10
     _comment: Music Box
     waveform: sine
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 12
+  - instrument: 11
     _comment: Vibraphone
     waveform: sine
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 13
+  - instrument: 12
     _comment: Marimba
     waveform: triangle
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 14
+  - instrument: 13
     _comment: Xylophone
     waveform: triangle
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 15
+  - instrument: 14
     _comment: Tubular Bells
     waveform: triangle
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 16
+  - instrument: 15
     _comment: Dulcimer
     waveform: triangle
     amp_envelope: { attack: 2, decay: 200, sustain: 0, release: 100, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 17
+  - instrument: 16
     _comment: Drawbar Organ
     waveform: square_50
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 6, amplitude: 15 }
-  - instrument: 18
+  - instrument: 17
     _comment: Percussive Organ
     waveform: square_50
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 19
+  - instrument: 18
     _comment: Rock Organ
     waveform: square_50
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 6, amplitude: 15 }
-  - instrument: 20
+  - instrument: 19
     _comment: Church Organ
     waveform: square_50
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 21
+  - instrument: 20
     _comment: Reed Organ
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 22
+  - instrument: 21
     _comment: Accordion
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 23
+  - instrument: 22
     _comment: Harmonica
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 24
+  - instrument: 23
     _comment: Tango Accordion
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 0, sustain: 800, release: 50, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 25
+  - instrument: 24
     _comment: Acoustic Guitar (nylon)
     waveform: triangle
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 26
+  - instrument: 25
     _comment: Acoustic Guitar (steel)
     waveform: triangle
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 27
+  - instrument: 26
     _comment: Electric Guitar (jazz)
     waveform: triangle
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 28
+  - instrument: 27
     _comment: Electric Guitar (clean)
     waveform: triangle
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 29
+  - instrument: 28
     _comment: Electric Guitar (muted)
     waveform: square_30
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 30
+  - instrument: 29
     _comment: Overdriven Guitar
     waveform: sawtooth
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 31
+  - instrument: 30
     _comment: Distortion Guitar
     waveform: sawtooth
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 32
+  - instrument: 31
     _comment: Guitar harmonics
     waveform: triangle
     amp_envelope: { attack: 8, decay: 350, sustain: 150, release: 250, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 33
+  - instrument: 32
     _comment: Acoustic Bass
     waveform: triangle
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 34
+  - instrument: 33
     _comment: Electric Bass (finger)
     waveform: triangle
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 35
+  - instrument: 34
     _comment: Electric Bass (pick)
     waveform: triangle
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 36
+  - instrument: 35
     _comment: Fretless Bass
     waveform: triangle
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 37
+  - instrument: 36
     _comment: Slap Bass 1
     waveform: square_10
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 38
+  - instrument: 37
     _comment: Slap Bass 2
     waveform: square_10
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 39
+  - instrument: 38
     _comment: Synth Bass 1
     waveform: square_10
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 40
+  - instrument: 39
     _comment: Synth Bass 2
     waveform: square_10
     amp_envelope: { attack: 12, decay: 250, sustain: 300, release: 150, amplitude: 950 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 41
+  - instrument: 40
     _comment: Violin
     waveform: sawtooth
     amp_envelope: { attack: 120, decay: 200, sustain: 700, release: 250, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 20 }
-  - instrument: 42
+  - instrument: 41
     _comment: Viola
     waveform: sawtooth
     amp_envelope: { attack: 120, decay: 200, sustain: 700, release: 250, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 20 }
-  - instrument: 43
+  - instrument: 42
     _comment: Cello
     waveform: sawtooth
     amp_envelope: { attack: 120, decay: 200, sustain: 700, release: 250, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 20 }
-  - instrument: 44
+  - instrument: 43
     _comment: Contrabass
     waveform: sawtooth
     amp_envelope: { attack: 120, decay: 200, sustain: 700, release: 250, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 20 }
-  - instrument: 45
+  - instrument: 44
     _comment: Tremolo Strings
     waveform: sawtooth
     amp_envelope: { attack: 120, decay: 200, sustain: 700, release: 250, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 20 }
-  - instrument: 46
+  - instrument: 45
     _comment: Pizzicato Strings
     waveform: triangle
     amp_envelope: { attack: 2, decay: 100, sustain: 0, release: 50, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 47
+  - instrument: 46
     _comment: Orchestral Harp
     waveform: sawtooth
     amp_envelope: { attack: 120, decay: 200, sustain: 700, release: 250, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 20 }
-  - instrument: 48
+  - instrument: 47
     _comment: Timpani
     waveform: triangle
     amp_envelope: { attack: 5, decay: 400, sustain: 0, release: 300, amplitude: 1000 }
     pitch_envelope: { attack: 0, decay: 150, sustain: 0, release: 0, amplitude: -50 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 49
+  - instrument: 48
     _comment: String Ensemble 1
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 50
+  - instrument: 49
     _comment: String Ensemble 2
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 51
+  - instrument: 50
     _comment: SynthStrings 1
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 52
+  - instrument: 51
     _comment: SynthStrings 2
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 53
+  - instrument: 52
     _comment: Choir Aahs
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 54
+  - instrument: 53
     _comment: Voice Oohs
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 55
+  - instrument: 54
     _comment: Synth Voice
     waveform: sawtooth
     amp_envelope: { attack: 150, decay: 200, sustain: 750, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 4, amplitude: 15 }
-  - instrument: 56
+  - instrument: 55
     _comment: Orchestra Hit
     waveform: sawtooth
     amp_envelope: { attack: 5, decay: 150, sustain: 100, release: 100, amplitude: 1024 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 57
+  - instrument: 56
     _comment: Trumpet
     waveform: sawtooth
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 58
+  - instrument: 57
     _comment: Trombone
     waveform: sawtooth
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 59
+  - instrument: 58
     _comment: Tuba
     waveform: sawtooth
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 60
+  - instrument: 59
     _comment: Muted Trumpet
     waveform: square_40
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 61
+  - instrument: 60
     _comment: French Horn
     waveform: sawtooth
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 62
+  - instrument: 61
     _comment: Brass Section
     waveform: sawtooth
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 63
+  - instrument: 62
     _comment: SynthBrass 1
     waveform: square_40
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 64
+  - instrument: 63
     _comment: SynthBrass 2
     waveform: square_40
     amp_envelope: { attack: 60, decay: 100, sustain: 700, release: 180, amplitude: 850 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 65
+  - instrument: 64
     _comment: Soprano Sax
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 66
+  - instrument: 65
     _comment: Alto Sax
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 67
+  - instrument: 66
     _comment: Tenor Sax
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 68
+  - instrument: 67
     _comment: Baritone Sax
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 69
+  - instrument: 68
     _comment: Oboe
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 70
+  - instrument: 69
     _comment: English Horn
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 71
+  - instrument: 70
     _comment: Bassoon
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 72
+  - instrument: 71
     _comment: Clarinet
     waveform: square_50
     amp_envelope: { attack: 40, decay: 80, sustain: 750, release: 120, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 5, amplitude: 12 }
-  - instrument: 73
+  - instrument: 72
     _comment: Piccolo
     waveform: sine
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 74
+  - instrument: 73
     _comment: Flute
     waveform: sine
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 75
+  - instrument: 74
     _comment: Recorder
     waveform: sine
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 76
+  - instrument: 75
     _comment: Pan Flute
     waveform: triangle
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 77
+  - instrument: 76
     _comment: Blown Bottle
     waveform: triangle
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 78
+  - instrument: 77
     _comment: Shakuhachi
     waveform: triangle
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 79
+  - instrument: 78
     _comment: Whistle
     waveform: triangle
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 80
+  - instrument: 79
     _comment: Ocarina
     waveform: triangle
     amp_envelope: { attack: 50, decay: 100, sustain: 800, release: 100, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 4, amplitude: 30 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 81
+  - instrument: 80
     _comment: Lead 1 (square)
     waveform: square_50
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 82
+  - instrument: 81
     _comment: Lead 2 (sawtooth)
     waveform: sawtooth
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 83
+  - instrument: 82
     _comment: Lead 3 (calliope)
     waveform: square_50
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 84
+  - instrument: 83
     _comment: Lead 4 (chiff)
     waveform: sawtooth
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 85
+  - instrument: 84
     _comment: Lead 5 (charang)
     waveform: sawtooth
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 86
+  - instrument: 85
     _comment: Lead 6 (voice)
     waveform: sawtooth
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 87
+  - instrument: 86
     _comment: Lead 7 (fifths)
     waveform: sawtooth
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 88
+  - instrument: 87
     _comment: Lead 8 (bass + lead)
     waveform: sawtooth
     amp_envelope: { attack: 10, decay: 100, sustain: 800, release: 150, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 89
+  - instrument: 88
     _comment: Pad 1 (new age)
     waveform: triangle
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 90
+  - instrument: 89
     _comment: Pad 2 (warm)
     waveform: sine
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 91
+  - instrument: 90
     _comment: Pad 3 (polysynth)
     waveform: triangle
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 92
+  - instrument: 91
     _comment: Pad 4 (choir)
     waveform: sine
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 93
+  - instrument: 92
     _comment: Pad 5 (bowed)
     waveform: triangle
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 94
+  - instrument: 93
     _comment: Pad 6 (metallic)
     waveform: triangle
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 95
+  - instrument: 94
     _comment: Pad 7 (halo)
     waveform: triangle
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 96
+  - instrument: 95
     _comment: Pad 8 (sweep)
     waveform: triangle
     amp_envelope: { attack: 250, decay: 300, sustain: 800, release: 400, amplitude: 700 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 97
+  - instrument: 96
     _comment: FX 1 (rain)
     waveform: cycle_32
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 98
+  - instrument: 97
     _comment: FX 2 (soundtrack)
     waveform: sawtooth
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 99
+  - instrument: 98
     _comment: FX 3 (crystal)
     waveform: sawtooth
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 100
+  - instrument: 99
     _comment: FX 4 (atmosphere)
     waveform: sawtooth
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 101
+  - instrument: 100
     _comment: FX 5 (brightness)
     waveform: sawtooth
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 102
+  - instrument: 101
     _comment: FX 6 (goblins)
     waveform: cycle_32
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 103
+  - instrument: 102
     _comment: FX 7 (echoes)
     waveform: sawtooth
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 104
+  - instrument: 103
     _comment: FX 8 (sci-fi)
     waveform: sawtooth
     amp_envelope: { attack: 80, decay: 200, sustain: 600, release: 300, amplitude: 750 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 105
+  - instrument: 104
     _comment: Sitar
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 106
+  - instrument: 105
     _comment: Banjo
     waveform: triangle
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 107
+  - instrument: 106
     _comment: Shamisen
     waveform: triangle
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 108
+  - instrument: 107
     _comment: Koto
     waveform: triangle
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 109
+  - instrument: 108
     _comment: Kalimba
     waveform: triangle
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 110
+  - instrument: 109
     _comment: Bagpipe
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 111
+  - instrument: 110
     _comment: Fiddle
     waveform: sawtooth
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 112
+  - instrument: 111
     _comment: Shanai
     waveform: triangle
     amp_envelope: { attack: 15, decay: 250, sustain: 100, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 113
+  - instrument: 112
     _comment: Tinkle Bell
     waveform: sine
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 114
+  - instrument: 113
     _comment: Agogo
     waveform: triangle
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 115
+  - instrument: 114
     _comment: Steel Drums
     waveform: sine
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 116
+  - instrument: 115
     _comment: Woodblock
     waveform: triangle
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 117
+  - instrument: 116
     _comment: Taiko Drum
     waveform: cycle_16
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 118
+  - instrument: 117
     _comment: Melodic Tom
     waveform: cycle_16
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 119
+  - instrument: 118
     _comment: Synth Drum
     waveform: triangle
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 120
+  - instrument: 119
     _comment: Reverse Cymbal
     waveform: triangle
     amp_envelope: { attack: 5, decay: 150, sustain: 0, release: 100, amplitude: 900 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 121
+  - instrument: 120
     _comment: Guitar Fret Noise
     waveform: noise_tunable
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 122
+  - instrument: 121
     _comment: Breath Noise
     waveform: noise_tunable
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 123
+  - instrument: 122
     _comment: Seashore
     waveform: noise
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 124
+  - instrument: 123
     _comment: Bird Tweet
     waveform: noise_tunable
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 125
+  - instrument: 124
     _comment: Telephone Ring
     waveform: noise_tunable
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 126
+  - instrument: 125
     _comment: Helicopter
     waveform: noise
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 127
+  - instrument: 126
     _comment: Applause
     waveform: noise
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
     pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
     amp_lfo: { frequency: 0, amplitude: 0 }
     pitch_lfo: { frequency: 0, amplitude: 0 }
-  - instrument: 128
+  - instrument: 127
     _comment: Gunshot
     waveform: noise
     amp_envelope: { attack: 20, decay: 300, sustain: 200, release: 200, amplitude: 800 }
