@@ -1,12 +1,15 @@
 import logging
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import IntEnum
+from math import ceil
 from typing import Dict, List, Tuple
 
 from mido import Message, MidiFile, tick2second
 
-from arcade.music_types import Song
+from arcade.music_types import EnharmonicSpelling, Envelope, Instrument, Note, \
+    NoteEvent, Song, Track
 from converter.instruments import InstrumentParameterMapping
 from utils.logger import create_logger
 
@@ -427,6 +430,20 @@ def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNoteWithTick]) -> Li
     return list(sorted(set([m.note for m in timeline if m.is_drum])))
 
 
+def find_all_drum_chords_used(timeline: List[AbsoluteCompleteChordWithTick]) -> List[
+    int]:
+    """
+    Search the timeline for all unique drum notes, for a list of chords.
+
+    :param timeline: A list of `AbsoluteCompleteChordWithTick` objects.
+    :return: A list of ints, representing what general MIDI drum notes are in the song.
+    """
+    logger.debug(f"Finding all drum chords in the timeline")
+
+    return list(
+        sorted({note for chord in timeline if chord.is_drum for note in chord.notes}))
+
+
 def timeline_group_by_instrument(timeline: List[AbsoluteCompleteNoteWithTick]) -> List[
     List[AbsoluteCompleteNoteWithTick]]:
     """
@@ -738,5 +755,81 @@ def convert_midi_to_song(midi_song: MidiFile,
     # song's constraints, we should be able to basically map 1-1 to the MakeCode Arcade
     # dataclasses
     logger.debug("Timeline resolved, mapping to MakeCode Arcade song")
+
+    next_id = 0
+    highest_tick = 0
+
+    for old_track in global_timeline:
+        this_track_is_drum = old_track[0].is_drum
+        highest_tick = max([highest_tick] + [c.end_tick for c in old_track])
+
+        # for drums
+        midi_drum_to_drum_idx: Dict[int, int] = {}
+        if this_track_is_drum:
+            # shouldn't matter, copied from get_empty_song to satisfy types and song
+            # packing
+            instrument = Instrument(
+                waveform=11,
+                octave=4,
+                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
+                                      amplitude=1024)
+            )
+            # actually load the drums in
+            # and keep what midi note to what sample index they should go to
+            drums = []
+            used_drum_notes = find_all_drum_chords_used(old_track)
+            for i, drum_note in enumerate(used_drum_notes):
+                drums.append(mapping.drum_instruments[drum_note])
+                midi_drum_to_drum_idx[drum_note] = i
+        else:
+            instrument = deepcopy(mapping.melodic_instruments[old_track[0].instrument])
+            # determine the optimal octave offset
+            highest_note = max([max(chord.notes) for chord in old_track])
+            lowest_note = min([min(chord.notes) for chord in old_track])
+
+            def octave_offset_work(octave: int) -> bool:
+                return ((((octave - 2) * 12) <= lowest_note) and
+                        (highest_note <= ((octave - 2) * 12 + 63)))
+
+            for potential_offset in range(2, 8):  # find the first offset that works
+                if octave_offset_work(potential_offset):
+                    instrument.octave = potential_offset
+                    break
+            else:
+                raise ValueError(f"Track range too big to fit! (please report)")
+            # none for melodic instrument
+            drums = None
+        new_track = Track(
+            id=next_id,
+            instrument=instrument,
+            drums=drums,
+            notes=[],
+        )
+        for chord in old_track:
+            if this_track_is_drum:
+                notes = [midi_drum_to_drum_idx[note] for note in
+                         chord.notes]
+            else:
+                offset = (instrument.octave - 2) * 12
+                notes = [note - offset for note in chord.notes]
+            new_track.notes.append(NoteEvent(
+                notes=[Note(note=n, enharmonic_spelling=EnharmonicSpelling.NORMAL) for n
+                       in notes],
+                start_tick=chord.start_tick,
+                end_tick=chord.end_tick,
+                velocity=chord.velocity
+            ))
+
+        song.tracks.append(new_track)
+        next_id += 1
+
+    # fix the ending measure count
+    ticks_per_measure = song.beats_per_measure * song.ticks_per_beat
+    song.measures = ceil(highest_tick / ticks_per_measure)
+
+    time_for_tick = (60 / song.beats_per_minute) / song.ticks_per_beat
+    logger.debug(f"Finished mapping to MakeCode Arcade song with {len(song.tracks)} "
+                 f"tracks, length of {highest_tick} ticks which is "
+                 f"{highest_tick * time_for_tick} seconds")
 
     return song
