@@ -5,8 +5,8 @@ from pathlib import Path
 from mido import MidiFile
 
 from arcade.music import encode_song_to_hex
-from converter.instruments import load_instrument_params
-from converter.midi_to_song import convert_midi_to_song
+from midi_to_song import convert_midi_to_song
+from midi_to_song.instruments import load_instrument_params
 from utils.logger import create_logger, set_all_stdout_logger_levels
 
 parser = ArgumentParser(description="Convert a MIDI file to a MakeCode Arcade song.")
