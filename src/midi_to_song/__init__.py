@@ -72,9 +72,6 @@ def convert_midi_to_song(midi_song: MidiFile,
     global_timeline: List[
         List[AbsoluteCompleteChordWithTick]] = timeline_group_into_perfect_chords(
         global_timeline)
-    global_timeline: List[
-        List[AbsoluteCompleteChordWithTick]] = timeline_resolve_overlapping_chords(
-        global_timeline)
 
     # Raises exceptions on check failures
     timeline_checks(global_timeline)

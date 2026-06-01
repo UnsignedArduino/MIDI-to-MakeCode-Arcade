@@ -64,11 +64,5 @@ def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
             if len(instruments) > 1:
                 raise ValueError(f"Track has more than one instrument! (found "
                                  f"{len(instruments)}, please report)")
-        # No chords overlap, i.e. start_tick >= end_tick of prev chord
-        for i in range(1, len(track)):
-            prev_chord = track[i - 1]
-            this_chord = track[i]
-            if prev_chord.end_tick > this_chord.start_tick:
-                raise ValueError(f"Chord overlapped! (please report)")
 
     logger.debug("Timeline passes all checks")
