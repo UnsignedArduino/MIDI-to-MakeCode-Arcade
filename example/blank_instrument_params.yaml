@@ -1,0 +1,450 @@
+_comment: "
+Full GM1 support, minimal GM2 support (the extended GM2 drum notes, but only on
+the standard kit), and very minimal Roland GS/Yamaha XG support (parsing very
+specific SysEx messages)
+
+Units:
+  Attack, decay, release: milliseconds
+  Sustain and amplitudes: range 0-1024
+  LFO frequencies: hz
+
+Waveforms map to as expected by MakeCode Arcade:
+  triangle = 1
+  sawtooth = 2
+  sine = 3
+  noise_tunable = 4
+  noise = 5
+  square_10 = 11
+  square_20 = 12
+  square_30 = 13
+  square_40 = 14
+  square_50 (or square) = 15
+  cycle_16 = 16
+  cycle_32 = 17
+  cycle_64 (or noise_tunable_2) = 18
+
+https://arcade.makecode.com/developer/sound
+> The noise is an actual white noise. It ignores the requested frequency or 
+> note.
+> 
+> The tunable noise tone contains a pseudorandom sample. At high frequency it 
+> sounds similar to white noise, at low frequency it produces irregular 
+> crackling noises.
+> 
+> The cycle 16, cycle 32, and cycle 64 waveforms are repeating pseudorandom 
+> patterns with a cycle length of 16/32/64 samples respectively. They sound 
+> like a noise-distorted square wave, with short cycles being more regular and 
+> long cycles being noisier.
+
+For testing instrument parameters, you can use this, by Richard
+https://arcade.makecode.com/18336-29202-55655-79439
+"
+melodic_instruments:
+  # Pianos
+  - instrument: 0
+    _comment: Acoustic Grand Piano
+    waveform: triangle
+    amp_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
+    pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, amplitude: 0 }
+    amp_lfo: { frequency: 0, amplitude: 0 }
+    pitch_lfo: { frequency: 0, amplitude: 0 }
+  - instrument: 1
+    _comment: Bright Acoustic Piano
+  - instrument: 2
+    _comment: Electric Grand Piano
+  - instrument: 3
+    _comment: Honky-tonk Piano
+  - instrument: 4
+    _comment: Electric Piano 1
+  - instrument: 5
+    _comment: Electric Piano 2
+  - instrument: 6
+    _comment: Harpsichord
+  - instrument: 7
+    _comment: Clavinet
+  # Chromatic percussion
+  - instrument: 8
+    _comment: Celesta
+  - instrument: 9
+    _comment: Glockenspiel
+  - instrument: 10
+    _comment: Music Box
+  - instrument: 11
+    _comment: Vibraphone
+  - instrument: 12
+    _comment: Marimba
+  - instrument: 13
+    _comment: Xylophone
+  - instrument: 14
+    _comment: Tubular Bells
+  - instrument: 15
+    _comment: Dulcimer
+  # Organs
+  - instrument: 16
+    _comment: Drawbar Organ
+  - instrument: 17
+    _comment: Percussive Organ
+  - instrument: 18
+    _comment: Rock Organ
+  - instrument: 19
+    _comment: Church Organ
+  - instrument: 20
+    _comment: Reed Organ
+  - instrument: 21
+    _comment: Accordion
+  - instrument: 22
+    _comment: Harmonica
+  - instrument: 23
+    _comment: Tango Accordion
+  # Guitars
+  - instrument: 24
+    _comment: Acoustic Guitar (nylon)
+  - instrument: 25
+    _comment: Acoustic Guitar (steel)
+  - instrument: 26
+    _comment: Electric Guitar (jazz)
+  - instrument: 27
+    _comment: Electric Guitar (clean)
+  - instrument: 28
+    _comment: Electric Guitar (muted)
+  - instrument: 29
+    _comment: Overdriven Guitar
+  - instrument: 30
+    _comment: Distortion Guitar
+  - instrument: 31
+    _comment: Guitar Harmonics
+  # Basses
+  - instrument: 32
+    _comment: Acoustic Bass
+  - instrument: 33
+    _comment: Electric Bass (finger)
+  - instrument: 34
+    _comment: Electric Bass (pick)
+  - instrument: 35
+    _comment: Fretless Bass
+  - instrument: 36
+    _comment: Slap Bass 1
+  - instrument: 37
+    _comment: Slap Bass 2
+  - instrument: 38
+    _comment: Synth Bass 1
+  - instrument: 39
+    _comment: Synth Bass 2
+  # Strings
+  - instrument: 40
+    _comment: Violin
+  - instrument: 41
+    _comment: Viola
+  - instrument: 42
+    _comment: Cello
+  - instrument: 43
+    _comment: Contrabass
+  - instrument: 44
+    _comment: Tremolo Strings
+  - instrument: 45
+    _comment: Pizzicato Strings
+  - instrument: 46
+    _comment: Orchestral Harp
+  - instrument: 47
+    _comment: Timpani
+  # Strings continued
+  - instrument: 48
+    _comment: String Ensemble 1
+  - instrument: 49
+    _comment: String Ensemble 2
+  - instrument: 50
+    _comment: Synth Strings 1
+  - instrument: 51
+    _comment: Synth Strings 2
+  - instrument: 52
+    _comment: Choir Aahs
+  - instrument: 53
+    _comment: Voice Oohs
+  - instrument: 54
+    _comment: Synth Voice
+  - instrument: 55
+    _comment: Orchestra Hit
+  # Brass
+  - instrument: 56
+    _comment: Trumpet
+  - instrument: 57
+    _comment: Trombone
+  - instrument: 58
+    _comment: Tuba
+  - instrument: 59
+    _comment: Muted Trumpet
+  - instrument: 60
+    _comment: French Horn
+  - instrument: 61
+    _comment: Brass Section
+  - instrument: 62
+    _comment: Synth Brass 1
+  - instrument: 63
+    _comment: Synth Brass 2
+  # Reeds
+  - instrument: 64
+    _comment: Soprano Sax
+  - instrument: 65
+    _comment: Alto Sax
+  - instrument: 66
+    _comment: Tenor Sax
+  - instrument: 67
+    _comment: Baritone Sax
+  - instrument: 68
+    _comment: Oboe
+  - instrument: 69
+    _comment: English Horn
+  - instrument: 70
+    _comment: Bassoon
+  - instrument: 71
+    _comment: Clarinet
+  # Pipes
+  - instrument: 72
+    _comment: Piccolo
+  - instrument: 73
+    _comment: Flute
+  - instrument: 74
+    _comment: Recorder
+  - instrument: 75
+    _comment: Pan Flute
+  - instrument: 76
+    _comment: Blown Bottle
+  - instrument: 77
+    _comment: Shakuhachi
+  - instrument: 78
+    _comment: Whistle
+  - instrument: 79
+    _comment: Ocarina
+  # Synth leads
+  - instrument: 80
+    _comment: Lead 1 (square)
+  - instrument: 81
+    _comment: Lead 2 (sawtooth)
+  - instrument: 82
+    _comment: Lead 3 (calliope)
+  - instrument: 83
+    _comment: Lead 4 (chiff)
+  - instrument: 84
+    _comment: Lead 5 (charang)
+  - instrument: 85
+    _comment: Lead 6 (voice)
+  - instrument: 86
+    _comment: Lead 7 (fifths)
+  - instrument: 87
+    _comment: Lead 8 (bass+lead)
+  # Synth pads
+  - instrument: 88
+    _comment: Pad 1 (new age)
+  - instrument: 89
+    _comment: Pad 2 (warm)
+  - instrument: 90
+    _comment: Pad 3 (polysynth)
+  - instrument: 91
+    _comment: Pad 4 (choir)
+  - instrument: 92
+    _comment: Pad 5 (bowed)
+  - instrument: 93
+    _comment: Pad 6 (metallic)
+  - instrument: 94
+    _comment: Pad 7 (halo)
+  - instrument: 95
+    _comment: Pad 8 (sweep)
+  # Synth sfx
+  - instrument: 96
+    _comment: FX 1 (rain)
+  - instrument: 97
+    _comment: FX 2 (soundtrack)
+  - instrument: 98
+    _comment: FX 3 (crystal)
+  - instrument: 99
+    _comment: FX 4 (atmosphere)
+  - instrument: 100
+    _comment: FX 5 (brightness)
+  - instrument: 101
+    _comment: FX 6 (goblins)
+  - instrument: 102
+    _comment: FX 7 (echoes)
+  - instrument: 103
+    _comment: FX 8 (sci-fi)
+  # Ethnic
+  - instrument: 104
+    _comment: Sitar
+  - instrument: 105
+    _comment: Banjo
+  - instrument: 106
+    _comment: Shamisen
+  - instrument: 107
+    _comment: Koto
+  - instrument: 108
+    _comment: Kalimba
+  - instrument: 109
+    _comment: Bag Pipe
+  - instrument: 110
+    _comment: Fiddle
+  - instrument: 111
+    _comment: Shanai
+  # Percussive
+  - instrument: 112
+    _comment: Tinkle Bell
+  - instrument: 113
+    _comment: Agogo
+  - instrument: 114
+    _comment: Steel Drums
+  - instrument: 115
+    _comment: Woodblock
+  - instrument: 116
+    _comment: Taiko Drum
+  - instrument: 117
+    _comment: Melodic Tom
+  - instrument: 118
+    _comment: Synth Drum
+  # Sfx
+  - instrument: 119
+    _comment: Reverse Cymbal
+  - instrument: 120
+    _comment: Guitar Fret Noise
+  - instrument: 121
+    _comment: Breath Noise
+  - instrument: 122
+    _comment: Seashore
+  - instrument: 123
+    _comment: Bird Tweet
+  - instrument: 124
+    _comment: Telephone Ring
+  - instrument: 125
+    _comment: Helicopter
+  - instrument: 126
+    _comment: Applause
+  - instrument: 127
+    _comment: Gunshot
+drum_instruments:
+  - # GM2 start
+  - note: 27
+    _comment: High Q
+    start_freq: 0
+    start_vol: 0
+    steps:
+      - { waveform: noise_tunable, target_freq: 0, target_vol: 0, duration: 0 }
+  - note: 28
+    _comment: Slap
+  - note: 29
+    _comment: Scratch Push
+  - note: 30
+    _comment: Scratch Pull
+  - note: 31
+    _comment: Sticks
+  - note: 32
+    _comment: Square Click
+  - note: 33
+    _comment: Metronome Click
+  - note: 34
+    _comment: Metronome Bell
+  # GM2 end
+  - note: 35
+    _comment: Bass Drum 2
+  - note: 36
+    _comment: Bass Drum 1
+  - note: 37
+    _comment: Side Stick
+  - note: 38
+    _comment: Snare Drum 1
+  - note: 39
+    _comment: Hand Clap
+  - note: 40
+    _comment: Snare Drum 2
+  - note: 41
+    _comment: Low Tom 2
+  - note: 42
+    _comment: Closed Hi-Hat
+  - note: 43
+    _comment: Low Tom 1
+  - note: 44
+    _comment: Pedal Hi-Hat
+  - note: 45
+    _comment: Mid Tom 2
+  - note: 46
+    _comment: Open Hi-Hat
+  - note: 47
+    _comment: Mid Tom 1
+  - note: 48
+    _comment: High Tom 2
+  - note: 49
+    _comment: Crash Cymbal 1
+  - note: 50
+    _comment: High Tom 1
+  - note: 51
+    _comment: Ride Cymbal 1
+  - note: 52
+    _comment: Chinese Cymbal
+  - note: 53
+    _comment: Ride Bell
+  - note: 54
+    _comment: Tambourine
+  - note: 55
+    _comment: Splash Cymbal
+  - note: 56
+    _comment: Cowbell
+  - note: 57
+    _comment: Crash Cymbal 2
+  - note: 58
+    _comment: Vibraslap
+  - note: 59
+    _comment: Ride Cymbal 2
+  - note: 60
+    _comment: High Bongo
+  - note: 61
+    _comment: Low Bongo
+  - note: 62
+    _comment: Mute High Conga
+  - note: 63
+    _comment: Open High Conga
+  - note: 64
+    _comment: Low Conga
+  - note: 65
+    _comment: High Timbale
+  - note: 66
+    _comment: Low Timbale
+  - note: 67
+    _comment: High Agogo
+  - note: 68
+    _comment: Low Agogo
+  - note: 69
+    _comment: Cabasa
+  - note: 70
+    _comment: Maracas
+  - note: 71
+    _comment: Short Whistle
+  - note: 72
+    _comment: Long Whistle
+  - note: 73
+    _comment: Short Guiro
+  - note: 74
+    _comment: Long Guiro
+  - note: 75
+    _comment: Claves
+  - note: 76
+    _comment: High Wood Block
+  - note: 77
+    _comment: Low Wood Block
+  - note: 78
+    _comment: Mute Cuica
+  - note: 79
+    _comment: Open Cuica
+  - note: 80
+    _comment: Mute Triangle
+  - note: 81
+    _comment: Open Triangle
+  # GM2 start
+  - note: 82
+    _comment: Shaker
+  - note: 83
+    _comment: Jingle Bell
+  - note: 84
+    _comment: Belltree
+  - note: 85
+    _comment: Castanets
+  - note: 86
+    _comment: Mute Surdo
+  - note: 87
+    _comment: Open Surdo
+  # GM2 end
