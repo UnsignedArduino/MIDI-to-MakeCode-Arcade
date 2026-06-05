@@ -9,6 +9,7 @@ from midi_to_song import TestingOptionsForMIDIToSong, convert_midi_to_song
 from midi_to_song.instruments import load_instrument_params
 from midi_to_song.models import TestingOptionsForLoadInstrumentParams
 from utils.logger import create_logger, set_all_stdout_logger_levels
+from utils.strings import parse_range
 
 parser = ArgumentParser(description="Convert a MIDI file to a MakeCode Arcade song.")
 parser.add_argument("--input", "-i", type=Path, required=True,
@@ -37,6 +38,14 @@ testing_group.add_argument("--test-generate-code", action="store_true",
 testing_group.add_argument("--test-force-instrument-param-load", action="store_true",
                            help="Forcibly load the instrument parameter mapping file, "
                                 "even if it would normally cause errors.")
+testing_group.add_argument("--test-sample-melodic-instruments", type=parse_range,
+                           help="Pass in a range of MIDI instruments to sample, such "
+                                "as \"0,2,4-10\" to replicate the song several times "
+                                "and replace all melodic tracks in the song with the "
+                                "specific MIDI instrument. Basically does what "
+                                "`--test-replace-all-melodics-with` and "
+                                "`--test-generate-code` but with a bunch of specified "
+                                "instruments.")
 
 args = parser.parse_args()
 logger = create_logger(name=__name__, level=logging.INFO)
@@ -79,19 +88,37 @@ mapping = load_instrument_params(input_instrument_param_path.read_text(),
 logger.debug(f"Mapped {len(mapping.melodic_instruments)} melodic instruments and "
              f"{len(mapping.drum_instruments)} drum instruments")
 
-song = convert_midi_to_song(mid, mapping, testing_opts_midi_to_song)
-h = encode_song_to_hex(song)
-final_output = f"hex`{h}`"
-logger.info("Finished converting MIDI file")
+melodic_sample = args.test_sample_melodic_instruments
+if melodic_sample is not None:
+    logger.info(f"Sampling {melodic_sample} melodic instruments")
 
-if testing_opts_midi_to_song.generate_code:
-    final_output = f"""music.play(music.createSong(
+    final_output = "\n// generated melodic instrument sample\n\n"
+
+    for instrument in melodic_sample:
+        logger.info(f"Generating code for melodic instrument {instrument}")
+        testing_opts_midi_to_song.replace_all_melodics_with = instrument
+        song = convert_midi_to_song(mid, mapping, testing_opts_midi_to_song)
+        h = encode_song_to_hex(song)
+        final_output += f"""// melodics replaced with MIDI instrument {instrument}
+info.setScore({instrument});
+music.play(music.createSong(
+    hex`{h}`
+), music.PlaybackMode.UntilDone);
+"""
+else:
+    song = convert_midi_to_song(mid, mapping, testing_opts_midi_to_song)
+    h = encode_song_to_hex(song)
+    final_output = f"hex`{h}`"
+    logger.info("Finished converting MIDI file")
+
+    if testing_opts_midi_to_song.generate_code:
+        final_output = f"""music.play(music.createSong(
     {final_output}
 ), music.PlaybackMode.UntilDone);
 """
-if testing_opts_midi_to_song.replace_all_melodics_with is not None:
-    final_output = (f"// melodics replaced with MIDI instrument "
-                    f"{testing_opts_midi_to_song.replace_all_melodics_with}\n{final_output}")
+    if testing_opts_midi_to_song.replace_all_melodics_with is not None:
+        final_output = (f"// melodics replaced with MIDI instrument "
+                        f"{testing_opts_midi_to_song.replace_all_melodics_with}\n{final_output}")
 
 output_path = Path(args.output) if args.output is not None else None
 if output_path is not None:
