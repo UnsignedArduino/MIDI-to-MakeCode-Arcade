@@ -1,7 +1,7 @@
 import logging
 from copy import deepcopy
 from math import ceil
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from mido import MidiFile
 
@@ -10,11 +10,13 @@ from arcade.music_types import EnharmonicSpelling, Envelope, Instrument, Note, \
 from midi_to_song.instruments import InstrumentParameterMapping
 from midi_to_song.models import AbsoluteCompleteChordWithTick, AbsoluteCompleteNote, \
     AbsoluteCompleteNoteWithTick, AbsoluteTickMessage, AbsoluteTimeMessage, \
-    AbsoluteTimeMessageWithInstrument, ChannelState, DrumDeterminationSource
+    AbsoluteTimeMessageWithInstrument, ChannelState, DrumDeterminationSource, \
+    TestingOptionsForMIDIToSong
 from midi_to_song.timeline.parser import timeline_build, timeline_find_instrument_data, \
     timeline_group_messages
 from midi_to_song.timeline.processor import find_all_drum_chords_used, \
-    timeline_group_by_instrument, timeline_group_into_perfect_chords, \
+    timeline_fix_gate_lens, timeline_group_by_instrument, \
+    timeline_group_into_perfect_chords, \
     timeline_quantize_to_song_ticks, timeline_resolve_overlapping_chords, \
     timeline_split_into_two_tracks_if_needed
 from midi_to_song.timeline.validation import timeline_checks
@@ -24,16 +26,22 @@ logger = create_logger(name=__name__, level=logging.INFO)
 
 
 def convert_midi_to_song(midi_song: MidiFile,
-                         mapping: InstrumentParameterMapping) -> Song:
+                         mapping: InstrumentParameterMapping,
+                         testing_opts: Optional[
+                             TestingOptionsForMIDIToSong] = None) -> Song:
     """
     Convert a MIDI file into a MakeCode Arcade song.
 
     :param midi_song: A `MidiFile` object.
     :param mapping: An `InstrumentParameterMapping` object, loaded from
      `load_instrument_params`.
+    :param testing_opts: Extra options used for testing, passed from the CLI.
     :return: MakeCode Arcade `Song` object.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
+
+    if testing_opts is None:
+        testing_opts = TestingOptionsForMIDIToSong()
 
     song = Song(
         measures=1,
@@ -52,6 +60,13 @@ def convert_midi_to_song(midi_song: MidiFile,
     global_timeline: List[AbsoluteCompleteNote] = timeline_group_messages(
         global_timeline)
 
+    if testing_opts.replace_all_melodics_with is not None:
+        logger.debug(f"Testing option enabled to replace all melodic instruments with "
+                     f"MIDI instrument {testing_opts.replace_all_melodics_with}")
+        for m in global_timeline:
+            if not m.is_drum:
+                m.instrument = testing_opts.replace_all_melodics_with
+
     # MIDI file with C4 (MIDI 60) plays at B5 (MIDI 83)
     # This is because MakeCode Arcade defines C4 as 49 instead of 60
     # And now I have no idea why I need to shift down another octave but then it works
@@ -62,6 +77,7 @@ def convert_midi_to_song(midi_song: MidiFile,
             note.note -= 11  # MIDI 60 (C4) maps to Arcade's C4 of 49
             note.note -= 12  # another octave down makes it correct
 
+    global_timeline = timeline_fix_gate_lens(global_timeline, song, mapping)
     global_timeline: List[
         AbsoluteCompleteNoteWithTick] = timeline_quantize_to_song_ticks(global_timeline,
                                                                         song)
@@ -74,7 +90,7 @@ def convert_midi_to_song(midi_song: MidiFile,
         global_timeline)
 
     # Raises exceptions on check failures
-    timeline_checks(global_timeline)
+    timeline_checks(song, global_timeline, mapping)
 
     # With all this pitch checks and timing manipulations done to fit MakeCode Arcade's
     # song's constraints, we should be able to basically map 1-1 to the MakeCode Arcade

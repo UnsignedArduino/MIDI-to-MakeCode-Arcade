@@ -1,13 +1,67 @@
 import logging
 from collections import defaultdict
+from copy import deepcopy
+from math import ceil
 from typing import Dict, List, Tuple
 
 from arcade.music_types import Song
+from midi_to_song import InstrumentParameterMapping
 from midi_to_song.models import AbsoluteCompleteChordWithTick, AbsoluteCompleteNote, \
     AbsoluteCompleteNoteWithTick
 from utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
+
+
+def timeline_fix_gate_lens(timeline: List[AbsoluteCompleteNote],
+                           song: Song,
+                           mapping: InstrumentParameterMapping) -> List[
+    AbsoluteCompleteNote]:
+    """
+    Increase all the durations of the notes to ensure that attack < gate len + release,
+    so a playback bug is avoided. See https://github.com/microsoft/pxt/pull/11352.
+
+    :param timeline: A list of `AbsoluteCompleteNote` objects.
+    :param song: The `Song` object to reference the TPM and BPM.
+    :param mapping: An `InstrumentParameterMapping` object, loaded from
+     `load_instrument_params`.
+    :return: A list of `AbsoluteCompleteNote` objects.
+    """
+    logger.debug("Fixing gate lengths of notes in the timeline to avoid playback bug")
+
+    seconds_per_tick = (60 / song.beats_per_measure) / song.ticks_per_beat
+
+    res = []
+
+    durations_extended = 0
+
+    for old_note in timeline:
+        if old_note.is_drum:
+            # drum instruments don't have gate lengths, so we can skip
+            res.append(old_note)
+            continue
+        instrument_params = mapping.melodic_instruments[old_note.instrument]
+        attack = instrument_params.amp_envelope.attack / 1000
+        release = instrument_params.amp_envelope.release / 1000
+        old_duration = old_note.end_time - old_note.start_time
+        min_duration = attack - release
+        if old_duration <= min_duration:
+            min_ticks = min_duration / seconds_per_tick
+            required_ticks = ceil(min_ticks)
+            if min_ticks == required_ticks:
+                required_ticks += 1
+            new_note = deepcopy(old_note)
+            new_duration = required_ticks * seconds_per_tick
+            new_note.end_time = new_note.start_time + new_duration
+            durations_extended += 1
+        else:
+            new_note = old_note
+        res.append(new_note)
+
+    logger.debug(f"Extended {durations_extended} note durations to ensure duration > "
+                 f"attack - release")
+
+    return res
 
 
 def timeline_quantize_to_song_ticks(timeline: List[AbsoluteCompleteNote],

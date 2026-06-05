@@ -1,18 +1,26 @@
 import logging
 from typing import List
 
+from arcade.music_types import Song
+from midi_to_song import InstrumentParameterMapping
 from midi_to_song.models import AbsoluteCompleteChordWithTick
 from utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
-def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
+def timeline_checks(song: Song,
+                    timeline: List[List[AbsoluteCompleteChordWithTick]],
+                    mapping: InstrumentParameterMapping):
     """
     Run some basic checks on the timeline to verify assumptions before mapping to the
     MakeCode Arcade dataclasses.
 
+    :param song: The MakeCode Arcade `Song` object that will be added to, with the
+     correctly configured BPM and TPM.
     :param timeline: A list of lists of `AbsoluteCompleteChordWithTick` objects.
+    :param mapping: An `InstrumentParameterMapping` object, loaded from
+     `load_instrument_params`.
     :raises ValueError: If any violations are detected.
     """
     logger.debug("Running checks on the timeline")
@@ -23,6 +31,7 @@ def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
     for track in timeline:
         if len(track) == 0:
             raise Warning("Empty track in the timeline!")
+        track_is_drum = track[0].is_drum
         # Sort by start tick as required, just in case
         track.sort(key=lambda c: c.start_tick)
         # The start and end ticks must be less than 65536
@@ -34,7 +43,7 @@ def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
                              f"BPM/TPB at the cost of worse timing.")
         # The highest and lowest notes must fit within 64 notes of an integer octave
         # offset for melodic instruments
-        if not track[0].is_drum:
+        if not track_is_drum:
             highest_note = max([max(chord.notes) for chord in track])
             lowest_note = min([min(chord.notes) for chord in track])
 
@@ -56,7 +65,7 @@ def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
                              f"found {min_chord_duration} ticks, please report)")
         # All chords must have the same instrument if melodic or all chords must be
         # marked as drums in a drum track
-        if track[0].is_drum:
+        if track_is_drum:
             if any([not chord.is_drum for chord in track]):
                 raise ValueError(f"Found non drum chord in drum track! (please report")
         else:
@@ -64,5 +73,20 @@ def timeline_checks(timeline: List[List[AbsoluteCompleteChordWithTick]]):
             if len(instruments) > 1:
                 raise ValueError(f"Track has more than one instrument! (found "
                                  f"{len(instruments)}, please report)")
+        # Ensure attack < gate length + release in the amp envelope for all chords,
+        # otherwise a bug is triggered and the simulator freezes (see
+        # https://github.com/microsoft/pxt/pull/11352)
+        if not track_is_drum:
+            instrument = mapping.melodic_instruments[track[0].instrument]
+            attack = instrument.amp_envelope.attack
+            release = instrument.amp_envelope.release
+            ms_per_tick = (60 / song.beats_per_minute) / song.ticks_per_beat * 1000
+            chord_times = [
+                round((chord.end_tick - chord.start_tick) * ms_per_tick) for
+                chord in track]
+            if any([(not (attack < (chord_time + release))) for chord_time in
+                    chord_times]):
+                raise ValueError("Found chord where instrument's attack time >= "
+                                 "gate length + release time! (please report)")
 
     logger.debug("Timeline passes all checks")

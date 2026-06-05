@@ -1,11 +1,12 @@
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict
+from typing import Dict, Optional
 
 from yaml import safe_load
 
 from arcade.music_types import DrumInstrument, DrumSoundStep, Envelope, Instrument, LFO
+from midi_to_song.models import TestingOptionsForLoadInstrumentParams
 from utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
@@ -64,13 +65,16 @@ def waveform_from_str(w: str) -> WaveForm:
     }[w]
 
 
-def load_instrument_params(yaml_text: str) -> InstrumentParameterMapping:
+def load_instrument_params(yaml_text: str,
+                           testing_opts: Optional[
+                               TestingOptionsForLoadInstrumentParams] = None) -> InstrumentParameterMapping:
     """
     Take a YAML file specifying instrument data and return an instrument parameter
     mapping. For melodic instruments, the octave has been set to 0, duplicate as
     necessary for the full MIDI range (use octave offset 2 and 7 for full range)
 
     :param yaml_text: String holding the YAML file's text.
+    :param testing_opts: Extra options used for testing, passed from the CLI.
     :return: An `InstrumentParameterMapping` object.
     """
     logger.debug(f"Loading instrument parameters from {len(yaml_text)} characters of "
@@ -82,52 +86,59 @@ def load_instrument_params(yaml_text: str) -> InstrumentParameterMapping:
     logger.debug(f"Creating mappings for {len(data["melodic_instruments"])} melodic "
                  f"instruments")
     for instr in data["melodic_instruments"]:
-        # TODO: If pitch envelope or LFOs aren't defined in the YAML don't error out
-        mapping.melodic_instruments[instr["instrument"]] = Instrument(
-
-            waveform=waveform_from_str(instr["waveform"]),
-            # Each note can range from 0-63, so we'll have two tracks, each with the
-            # same two instruments but at different octave offsets
-            octave=0,
-            amp_envelope=Envelope(
-                attack=instr["amp_envelope"]["attack"],
-                decay=instr["amp_envelope"]["decay"],
-                sustain=instr["amp_envelope"]["sustain"],
-                release=instr["amp_envelope"]["release"],
-                amplitude=instr["amp_envelope"]["amplitude"],
-            ),
-            pitch_envelope=Envelope(
-                attack=instr["pitch_envelope"]["attack"],
-                decay=instr["pitch_envelope"]["decay"],
-                sustain=instr["pitch_envelope"]["sustain"],
-                release=instr["pitch_envelope"]["release"],
-                amplitude=instr["pitch_envelope"]["amplitude"],
-            ),
-            amp_lfo=LFO(
-                frequency=instr["amp_lfo"]["frequency"],
-                amplitude=instr["amp_lfo"]["amplitude"],
-            ),
-            pitch_lfo=LFO(
-                frequency=instr["pitch_lfo"]["frequency"],
-                amplitude=instr["pitch_lfo"]["amplitude"],
+        try:
+            # TODO: If pitch envelope or LFOs aren't defined in the YAML don't error out
+            mapping.melodic_instruments[instr["instrument"]] = Instrument(
+                waveform=waveform_from_str(instr["waveform"]),
+                # Each note can range from 0-63, so we'll have two tracks, each with the
+                # same two instruments but at different octave offsets
+                octave=0,
+                amp_envelope=Envelope(
+                    attack=instr["amp_envelope"]["attack"],
+                    decay=instr["amp_envelope"]["decay"],
+                    sustain=instr["amp_envelope"]["sustain"],
+                    release=instr["amp_envelope"]["release"],
+                    amplitude=instr["amp_envelope"]["amplitude"],
+                ),
+                pitch_envelope=Envelope(
+                    attack=instr["pitch_envelope"]["attack"],
+                    decay=instr["pitch_envelope"]["decay"],
+                    sustain=instr["pitch_envelope"]["sustain"],
+                    release=instr["pitch_envelope"]["release"],
+                    amplitude=instr["pitch_envelope"]["amplitude"],
+                ),
+                amp_lfo=LFO(
+                    frequency=instr["amp_lfo"]["frequency"],
+                    amplitude=instr["amp_lfo"]["amplitude"],
+                ),
+                pitch_lfo=LFO(
+                    frequency=instr["pitch_lfo"]["frequency"],
+                    amplitude=instr["pitch_lfo"]["amplitude"],
+                )
             )
-        )
+        except Exception as e:
+            if not testing_opts.force_load:
+                raise e
 
     logger.debug(f"Creating mappings for {len(data["drum_instruments"])} drum "
                  f"instruments")
     for sample in data["drum_instruments"]:
-        mapping.drum_instruments[sample["note"]] = DrumInstrument(
-            name=sample["_comment"],
-            start_frequency=sample["start_freq"],
-            start_volume=sample["start_vol"],
-            steps=[
-                DrumSoundStep(
-                    waveform=waveform_from_str(step["waveform"]),
-                    frequency=step["target_freq"],
-                    volume=step["target_vol"],
-                    duration=step["duration"],
-                ) for step in sample["steps"]
-            ]
-        )
+        try:
+            mapping.drum_instruments[sample["note"]] = DrumInstrument(
+                name=sample["_comment"],
+                start_frequency=sample["start_freq"],
+                start_volume=sample["start_vol"],
+                steps=[
+                    DrumSoundStep(
+                        waveform=waveform_from_str(step["waveform"]),
+                        frequency=step["target_freq"],
+                        volume=step["target_vol"],
+                        duration=step["duration"],
+                    ) for step in sample["steps"]
+                ]
+            )
+        except Exception as e:
+            if not testing_opts.force_load:
+                raise e
 
     return mapping

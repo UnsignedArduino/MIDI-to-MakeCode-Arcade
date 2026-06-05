@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List
+from typing import List, Optional
 
 from mido import Message
 
@@ -86,3 +86,14 @@ class AbsoluteCompleteChordWithTick:
 
     instrument: int
     is_drum: bool
+
+
+@dataclass
+class TestingOptionsForLoadInstrumentParams:
+    force_load: Optional[bool] = False
+
+
+@dataclass
+class TestingOptionsForMIDIToSong:
+    replace_all_melodics_with: Optional[int] = None
+    generate_code: Optional[bool] = False
