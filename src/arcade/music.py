@@ -207,8 +207,8 @@ def encode_track_velocity(track: Track) -> Optional[bytearray]:
     :param track: The MakeCode Arcade `Track`.
     :return: A bytearray.
     """
-    if not any([note.velocity is not None and note.velocity < 128 for note in
-                track.notes]):
+    if not any(note.velocity is not None and note.velocity < 128 for note in
+               track.notes):
         return None
 
     out = bytearray(1 + len(track.notes))

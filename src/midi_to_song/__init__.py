@@ -125,8 +125,8 @@ def convert_midi_to_song(midi_song: MidiFile,
         else:
             instrument = deepcopy(mapping.melodic_instruments[old_track[0].instrument])
             # determine the optimal octave offset
-            highest_note = max([max(chord.notes) for chord in old_track])
-            lowest_note = min([min(chord.notes) for chord in old_track])
+            highest_note = max(max(chord.notes) for chord in old_track)
+            lowest_note = min(min(chord.notes) for chord in old_track)
 
             def octave_offset_work(octave: int) -> bool:
                 return ((((octave - 2) * 12) <= lowest_note) and
@@ -148,8 +148,7 @@ def convert_midi_to_song(midi_song: MidiFile,
         )
         for chord in old_track:
             if this_track_is_drum:
-                notes = [midi_drum_to_drum_idx[note] for note in
-                         chord.notes]
+                notes = (midi_drum_to_drum_idx[note] for note in chord.notes)
             else:
                 notes = chord.notes
             new_track.notes.append(NoteEvent(

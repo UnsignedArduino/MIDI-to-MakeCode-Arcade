@@ -106,7 +106,7 @@ def find_all_melodic_instruments(timeline: List[AbsoluteCompleteNoteWithTick]) -
     """
     logger.debug("Finding all melodic instruments in the timeline")
 
-    return list(sorted(set([m.instrument for m in timeline if not m.is_drum])))
+    return sorted({m.instrument for m in timeline if not m.is_drum})
 
 
 def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNoteWithTick]) -> List[int]:
@@ -118,7 +118,7 @@ def find_all_drum_notes_used(timeline: List[AbsoluteCompleteNoteWithTick]) -> Li
     """
     logger.debug("Finding all drum notes in the timeline")
 
-    return list(sorted(set([m.note for m in timeline if m.is_drum])))
+    return sorted({m.note for m in timeline if m.is_drum})
 
 
 def find_all_drum_chords_used(timeline: List[AbsoluteCompleteChordWithTick]) -> List[
@@ -131,8 +131,7 @@ def find_all_drum_chords_used(timeline: List[AbsoluteCompleteChordWithTick]) -> 
     """
     logger.debug(f"Finding all drum chords in the timeline")
 
-    return list(
-        sorted({note for chord in timeline if chord.is_drum for note in chord.notes}))
+    return sorted({note for chord in timeline if chord.is_drum for note in chord.notes})
 
 
 def timeline_group_by_instrument(timeline: List[AbsoluteCompleteNoteWithTick]) -> List[
@@ -201,7 +200,7 @@ def timeline_split_into_two_tracks_if_needed(
                     (highest_note <= ((octave - 2) * 12 + 63)))
 
         # does ANY octave offset from [0, 9] work?
-        if any([octave_offset_work(o) for o in range(0, 10)]):
+        if any(octave_offset_work(o) for o in range(0, 10)):
             # we don't need to modify, when constructing the MakeCode Arcade Tracks,
             # we'll find the correct octave offset again
             new_tracks.append(old_track)
