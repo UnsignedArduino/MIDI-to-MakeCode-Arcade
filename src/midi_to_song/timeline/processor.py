@@ -166,13 +166,14 @@ def timeline_group_by_instrument(timeline: List[AbsoluteCompleteNoteWithTick]) -
     return tracks
 
 
-def timeline_split_into_two_tracks_if_needed(
+def timeline_split_tracks_for_ranges(
         timeline: List[List[AbsoluteCompleteNoteWithTick]]) -> List[
     List[AbsoluteCompleteNoteWithTick]]:
     """
     Go through the melodic tracks in the timeline and check the highest and lowest note
     in each track. If it can't fit into one track (which has a range limit of 64 notes
-    from an octave offset) then we use two tracks and move notes as necessary.
+    from an octave offset) then we must split into more tracks to handle all the
+    offsets.
 
     :param timeline: A list of lists of `AbsoluteCompleteNote` objects.
     :return: A list of lists of `AbsoluteCompleteNoteWithTick` objects.
@@ -191,9 +192,8 @@ def timeline_split_into_two_tracks_if_needed(
             tracks_that_fit += 1
             continue
 
-        all_notes = [n.note for n in old_track]
-        highest_note = max(all_notes)
-        lowest_note = min(all_notes)
+        highest_note = max(n.note for n in old_track)
+        lowest_note = min(n.note for n in old_track)
 
         def octave_offset_work(octave: int) -> bool:
             return ((((octave - 2) * 12) <= lowest_note) and
@@ -206,12 +206,19 @@ def timeline_split_into_two_tracks_if_needed(
             new_tracks.append(old_track)
             tracks_that_fit += 1
         else:
-            # split into two tracks, using octave offsets 0 and 6 guarantee covering the
-            # full shifted MIDI range
-            low_track = [n for n in old_track if n.note < 41]
-            high_track = [n for n in old_track if n.note >= 41]
-            new_tracks.append(low_track)
-            new_tracks.append(high_track)
+            # split into three tracks to guarantee covering [0, 127]
+            # TODO: figure out if we really need 3 tracks all the time (probably not?)
+            #  maybe we can test a version where we start with MIDI notes [12, 75] and
+            #  [72, 135] or similar
+            low_track = [n for n in old_track if 0 <= n.note < 64]
+            med_track = [n for n in old_track if 60 <= n.note < 124]
+            high_track = [n for n in old_track if 124 <= n.note < 128]
+            if len(low_track) > 0:
+                new_tracks.append(low_track)
+            if len(med_track) > 0:
+                new_tracks.append(med_track)
+            if len(high_track) > 0:
+                new_tracks.append(high_track)
             tracks_that_split += 1
 
     logger.debug(f"{tracks_that_fit} tracks fit within one track's range, "

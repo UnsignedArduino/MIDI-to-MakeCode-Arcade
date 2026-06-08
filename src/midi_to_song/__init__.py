@@ -18,7 +18,7 @@ from midi_to_song.timeline.processor import find_all_drum_chords_used, \
     timeline_fix_gate_lens, timeline_group_by_instrument, \
     timeline_group_into_perfect_chords, \
     timeline_quantize_to_song_ticks, timeline_resolve_overlapping_chords, \
-    timeline_split_into_two_tracks_if_needed
+    timeline_split_tracks_for_ranges
 from midi_to_song.timeline.validation import timeline_checks
 from utils.logger import create_logger
 
@@ -84,7 +84,7 @@ def convert_midi_to_song(midi_song: MidiFile,
     global_timeline: List[
         List[AbsoluteCompleteNoteWithTick]] = timeline_group_by_instrument(
         global_timeline)
-    global_timeline = timeline_split_into_two_tracks_if_needed(global_timeline)
+    global_timeline = timeline_split_tracks_for_ranges(global_timeline)
     global_timeline: List[
         List[AbsoluteCompleteChordWithTick]] = timeline_group_into_perfect_chords(
         global_timeline)
