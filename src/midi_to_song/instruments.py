@@ -119,6 +119,9 @@ def load_instrument_params(yaml_text: str,
         except Exception as e:
             if not testing_opts.force_load:
                 raise e
+            # else:
+            #     logger.warning(f"Error loading melodic instrument "
+            #                    f"{instr['instrument']}: {e}. Skipping.")
 
     logger.debug(f"Creating mappings for {len(data["drum_instruments"])} drum "
                  f"instruments")

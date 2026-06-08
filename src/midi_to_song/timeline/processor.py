@@ -150,6 +150,8 @@ def timeline_group_by_instrument(timeline: List[AbsoluteCompleteNoteWithTick]) -
     used_drums = find_all_drum_notes_used(timeline)
     logger.debug(f"Song used {len(used_melodics)} melodic instruments and "
                  f"{len(used_drums)} unique drum notes")
+    logger.debug(f"Melodics used: {used_melodics}")
+    logger.debug(f"Drums used: {used_drums}")
 
     tracks = []
 

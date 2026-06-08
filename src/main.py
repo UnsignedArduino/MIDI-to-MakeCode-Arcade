@@ -92,7 +92,8 @@ melodic_sample = args.test_sample_melodic_instruments
 if melodic_sample is not None:
     logger.info(f"Sampling {melodic_sample} melodic instruments")
 
-    final_output = "\n// generated melodic instrument sample\n\n"
+    final_output = ("\n// generated melodic instrument sample\n"
+                    f"// instruments {melodic_sample}\n\n")
 
     for instrument in melodic_sample:
         logger.info(f"Generating code for melodic instrument {instrument}")
