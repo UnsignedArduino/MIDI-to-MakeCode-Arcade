@@ -37,6 +37,7 @@ def generate_and_parse_args() -> Namespace:
                              "severity messages only.")
 
     testing_group = parser.add_argument_group("Testing options")
+    # Melodic instrument tests
     testing_group.add_argument("--test-replace-all-melodics-with", type=int,
                                default=None,
                                help="Replace all melodic tracks in a song with the "
@@ -45,12 +46,6 @@ def generate_and_parse_args() -> Namespace:
                                action="store_true",
                                help="Prompt the user to replace all melodic tracks in "
                                     "a song with a specific MIDI instrument.")
-    testing_group.add_argument("--test-generate-code", action="store_true",
-                               help="Generate the MakeCode Arcade code to play the song.")
-    testing_group.add_argument("--test-force-instrument-param-load",
-                               action="store_true",
-                               help="Forcibly load the instrument parameter mapping "
-                                    "file, even if it would normally cause errors.")
     testing_group.add_argument("--test-sample-melodic-instruments",
                                type=parse_range,
                                help="Pass in a range of MIDI instruments to sample, "
@@ -61,6 +56,22 @@ def generate_and_parse_args() -> Namespace:
                                     "`--test-replace-all-melodics-with` and "
                                     "`--test-generate-code` but with a bunch of "
                                     "specified instruments.")
+    # Drum note tests
+    testing_group.add_argument("--test-replace-all-drums-with", type=int,
+                               default=None,
+                               help="Replace all drum notes in a song with the "
+                                    "specific drum note.")
+    testing_group.add_argument("--test-ask-to-replace-all-drums-with",
+                               action="store_true",
+                               help="Prompt the user to replace all drum notes in "
+                                    "a song with a specific drum note.")
+    # Misc
+    testing_group.add_argument("--test-generate-code", action="store_true",
+                               help="Generate the MakeCode Arcade code to play the song.")
+    testing_group.add_argument("--test-force-instrument-param-load",
+                               action="store_true",
+                               help="Forcibly load the instrument parameter mapping "
+                                    "file, even if it would normally cause errors.")
 
     args = parser.parse_args()
     logger.debug(f"Received arguments: {args}")
@@ -84,12 +95,15 @@ def generate_testing_options(args: Namespace) -> Tuple[
     TOs_load_instrument_params.force_load = args.test_force_instrument_param_load
     # Testing options for MIDI song generation
     TOs_midi_to_song.replace_all_melodics_with = args.test_replace_all_melodics_with
+    TOs_midi_to_song.replace_all_drums_with = args.test_replace_all_drums_with
     TOs_midi_to_song.generate_code = args.test_generate_code
     # Do any user prompting as necessary
     if args.test_ask_to_replace_all_melodics_with:
         TOs_midi_to_song.replace_all_melodics_with = int(
-            input("Replace all melodics with MIDI "
-                  "instrument: "))
+            input("Replace all melodics with MIDI instrument: "))
+    if args.test_ask_to_replace_all_drums_with:
+        TOs_midi_to_song.replace_all_drums_with = int(
+            input("Replace all drums with MIDI drum note: "))
     # Logging
     if TOs_midi_to_song.replace_all_melodics_with is not None:
         logger.info(f"Replacing all melodic instruments with MIDI instrument "

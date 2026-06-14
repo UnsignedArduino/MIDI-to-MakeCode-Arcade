@@ -96,4 +96,5 @@ class TestingOptionsForLoadInstrumentParams:
 @dataclass
 class TestingOptionsForMIDIToSong:
     replace_all_melodics_with: Optional[int] = None
+    replace_all_drums_with: Optional[int] = None
     generate_code: Optional[bool] = False

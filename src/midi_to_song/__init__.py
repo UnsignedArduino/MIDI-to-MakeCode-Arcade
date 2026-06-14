@@ -66,6 +66,12 @@ def convert_midi_to_song(midi_song: MidiFile,
         for m in global_timeline:
             if not m.is_drum:
                 m.instrument = testing_opts.replace_all_melodics_with
+    if testing_opts.replace_all_drums_with is not None:
+        logger.debug(f"Testing option enabled to replace all drum notes with MIDI drum "
+                     f"note {testing_opts.replace_all_drums_with}")
+        for m in global_timeline:
+            if m.is_drum:
+                m.note = testing_opts.replace_all_drums_with
 
     # MIDI file with C4 (MIDI 60) plays at B5 (MIDI 83)
     # This is because MakeCode Arcade defines C4 as 49 instead of 60
