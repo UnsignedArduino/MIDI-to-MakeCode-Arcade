@@ -148,7 +148,7 @@ def generate_melodic_instrument_sample(midi: MidiFile,
     """
     logger.info(f"Generating melodic instrument sample of {melodics_to_sample}")
     final_output = f"""// generated melodic instrument sample
-// instruments {melodics_to_sample}"""
+// instruments {melodics_to_sample}\n"""
 
     for instrument in melodics_to_sample:
         logger.info(f"Generating code for melodic instrument {instrument}")
