@@ -141,6 +141,9 @@ def generate_single_conversion(midi: MidiFile,
     if testing_opts_for_midi_to_song.replace_all_melodics_with is not None:
         final_output = f"""// melodics replaced with MIDI instrument {testing_opts_for_midi_to_song.replace_all_melodics_with} 
 {final_output}"""
+    if testing_opts_for_midi_to_song.replace_all_drums_with is not None:
+        final_output = f"""// drums replaced with MIDI drum note {testing_opts_for_midi_to_song.replace_all_drums_with}
+{final_output}"""
 
     return final_output
 
