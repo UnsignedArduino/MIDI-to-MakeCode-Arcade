@@ -1,7 +1,7 @@
 import logging
 from copy import deepcopy
 from math import ceil
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from mido import MidiFile
 
@@ -28,7 +28,8 @@ logger = create_logger(name=__name__, level=logging.INFO)
 def convert_midi_to_song(midi_song: MidiFile,
                          mapping: InstrumentParameterMapping,
                          testing_opts: Optional[
-                             TestingOptionsForMIDIToSong] = None) -> Song:
+                             TestingOptionsForMIDIToSong] = None
+                         ) -> Tuple[Song, List[int], List[int]]:
     """
     Convert a MIDI file into a MakeCode Arcade song.
 
@@ -36,7 +37,10 @@ def convert_midi_to_song(midi_song: MidiFile,
     :param mapping: An `InstrumentParameterMapping` object, loaded from
      `load_instrument_params`.
     :param testing_opts: Extra options used for testing, passed from the CLI.
-    :return: MakeCode Arcade `Song` object.
+    :return: A tuple of the MakeCode Arcade `Song` object; a list of ints, where the
+     index maps to the correct MIDI note. (so in a drum track, drum index 0 maps to the
+     MIDI drum note at index 0 in the list, etc.); and a list of ints, where the index
+     maps to the correct MIDI instrument, where -1 is the standard drum kit.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
 
@@ -106,12 +110,12 @@ def convert_midi_to_song(midi_song: MidiFile,
     next_id = 0
     highest_tick = 0
 
+    midi_drum_to_drum_idx: Dict[int, int] = {}
+    track_idx_to_midi_instrument = []
     for old_track in global_timeline:
         this_track_is_drum = old_track[0].is_drum
         highest_tick = max([highest_tick] + [c.end_tick for c in old_track])
 
-        # for drums
-        midi_drum_to_drum_idx: Dict[int, int] = {}
         if this_track_is_drum:
             # shouldn't matter, copied from get_empty_song to satisfy types and song
             # packing
@@ -128,6 +132,9 @@ def convert_midi_to_song(midi_song: MidiFile,
             for i, drum_note in enumerate(used_drum_notes):
                 drums.append(mapping.drum_instruments[drum_note])
                 midi_drum_to_drum_idx[drum_note] = i
+            # Record the MIDI instrument
+            # We have the standard kit as -1
+            track_idx_to_midi_instrument.append(-1)
         else:
             instrument = deepcopy(mapping.melodic_instruments[old_track[0].instrument])
             # determine the optimal octave offset
@@ -146,6 +153,8 @@ def convert_midi_to_song(midi_song: MidiFile,
                 raise ValueError(f"Track range too big to fit! (please report)")
             # none for melodic instrument
             drums = None
+            # Record the MIDI instrument
+            track_idx_to_midi_instrument.append(old_track[0].instrument)
         new_track = Track(
             id=next_id,
             instrument=instrument,
@@ -177,4 +186,12 @@ def convert_midi_to_song(midi_song: MidiFile,
                  f"tracks, length of {highest_tick} ticks which is "
                  f"{highest_tick * time_for_tick} seconds")
 
-    return song
+    if len(midi_drum_to_drum_idx) > 0:
+        drum_idx_to_midi_drum = list(midi_drum_to_drum_idx.keys())
+    else:
+        drum_idx_to_midi_drum = []
+    logger.debug(f"Drum indices to MIDI drum notes: {drum_idx_to_midi_drum}")
+
+    logger.debug(f"Track indices to MIDI instruments: {track_idx_to_midi_instrument}")
+
+    return song, drum_idx_to_midi_drum, track_idx_to_midi_instrument

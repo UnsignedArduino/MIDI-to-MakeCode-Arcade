@@ -32,12 +32,20 @@ logger.debug(f"Mapped {len(mapping.melodic_instruments)} melodic instruments and
              f"{len(mapping.drum_instruments)} drum instruments")
 
 melodic_sample = args.test_sample_melodic_instruments
+generate_extra_code = args.generate_extra_code
+if melodic_sample and generate_extra_code:
+    raise ValueError("Melodic sample option and generating extra code are mutually "
+                     "exclusive!")
+if testing_opts_for_midi_to_song.generate_code and generate_extra_code:
+    raise ValueError("Generating sample code and generating extra code are mutually "
+                     "exclusive!")
+
 if melodic_sample is not None:
     final_output = generate_melodic_instrument_sample(mid, mapping,
                                                       testing_opts_for_midi_to_song,
                                                       melodic_sample)
 else:
-    final_output = generate_single_conversion(mid, mapping,
+    final_output = generate_single_conversion(mid, mapping, generate_extra_code,
                                               testing_opts_for_midi_to_song)
 
 output_path = Path(args.output) if args.output is not None else None
