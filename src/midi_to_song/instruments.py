@@ -14,6 +14,11 @@ logger = create_logger(name=__name__, level=logging.INFO)
 
 @dataclass
 class InstrumentParameterMapping:
+    # Compensation factor to scale by. Adjusts velocity to ensure that lower instruments
+    # get a velocity boost while higher instruments are attenuated, helpful if you
+    # tuned all instrument amplitudes at the same pitch. Pitches above MIDI note 60 are
+    # reduced, pitches below are boosted. Set to 0 to disable.
+    melodic_pitch_comp_k: float
     # The integer is the general MIDI instrument
     melodic_instruments: Dict[int, Instrument]
     # The integer is the MIDI drum kit note
@@ -81,7 +86,12 @@ def load_instrument_params(yaml_text: str,
                  f"YAML text")
     data = safe_load(yaml_text)
 
-    mapping = InstrumentParameterMapping(melodic_instruments={}, drum_instruments={})
+    melodic_pitch_comp_k = data[
+        "melodic_pitch_comp_k"] if "melodic_pitch_comp_k" in data else 0
+    logger.debug(f"{melodic_pitch_comp_k=}")
+
+    mapping = InstrumentParameterMapping(melodic_pitch_comp_k=melodic_pitch_comp_k,
+                                         melodic_instruments={}, drum_instruments={})
 
     logger.debug(f"Creating mappings for {len(data["melodic_instruments"])} melodic "
                  f"instruments")

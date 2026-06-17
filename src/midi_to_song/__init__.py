@@ -15,7 +15,8 @@ from midi_to_song.models import AbsoluteCompleteChordWithTick, AbsoluteCompleteN
 from midi_to_song.timeline.parser import timeline_build, timeline_find_instrument_data, \
     timeline_group_messages
 from midi_to_song.timeline.processor import find_all_drum_chords_used, \
-    timeline_fix_gate_lens, timeline_group_by_instrument, \
+    timeline_apply_pitch_compensation, timeline_fix_gate_lens, \
+    timeline_group_by_instrument, \
     timeline_group_into_perfect_chords, \
     timeline_quantize_to_song_ticks, timeline_resolve_overlapping_chords, \
     timeline_split_tracks_for_ranges
@@ -87,6 +88,8 @@ def convert_midi_to_song(midi_song: MidiFile,
             note.note -= 11  # MIDI 60 (C4) maps to Arcade's C4 of 49
             note.note -= 12  # another octave down makes it correct
 
+    global_timeline = timeline_apply_pitch_compensation(global_timeline,
+                                                        mapping.melodic_pitch_comp_k)
     global_timeline = timeline_fix_gate_lens(global_timeline, song, mapping)
     global_timeline: List[
         AbsoluteCompleteNoteWithTick] = timeline_quantize_to_song_ticks(global_timeline,

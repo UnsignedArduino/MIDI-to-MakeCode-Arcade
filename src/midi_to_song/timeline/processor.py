@@ -13,6 +13,51 @@ from utils.logger import create_logger
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
+def timeline_apply_pitch_compensation(timeline: List[AbsoluteCompleteNote], k: float) -> \
+        List[AbsoluteCompleteNote]:
+    """
+    If you tuned all melodic instruments with the same song, then you could be
+    ex. tuning a bass with higher-than-typical notes, and a flute with lower-
+    than-normal notes. Thus, a flute playing at in its regular range will
+    overpower the bass, due to Fletcher-Munson curves. But here, we just use a
+    compensation factor, so lower pitches relative to MIDI note 60 are boosted,
+    and higher pitches are attenuated.
+
+    With k=0.35, one octave up is at 79% amplitude, two octaves up is at 62%
+    amplitude, and one octave down is at 127% amplitude. Currently, this k factor
+    is global. Set k=0 or remove it to disable if you tuned instruments with
+    their correct ranges.
+    :param timeline: A list of `AbsoluteCompleteNote` objects.
+    :param k: The ptich compensation factor. Higher k means higher notes are attenuated
+     more and lower notes are boosted more. Set 0 to disable.
+    :return: A list of `AbsoluteCompleteNote` objects.
+    """
+    logger.debug(f"Applying pitch compensation factor of {k=} to timeline")
+    res = []
+    ref_note = 60 - 11 - 12  # notes were adjusted
+    scaler = lambda n: 2 ** (-(n - ref_note) / 12 * k)
+    logger.debug(f"Reference note is MIDI note {ref_note}")
+    logger.debug(f"Scaler value examples for octave -2, -1, 0, 1, and 2: "
+                 f"{[round(scaler(ref_note + 12 * o) * 100) / 100 for o in range(-2, 3)]}")
+    notes_boosted = 0
+    notes_attenuated = 0
+    for old_note in timeline:
+        if not old_note.is_drum:
+            new_note = deepcopy(old_note)
+            scale = scaler(new_note.note)
+            new_note.velocity = round(min(max(new_note.velocity * scale, 1), 127))
+            if scale > 1:
+                notes_boosted += 1
+            elif scale < 1:
+                notes_attenuated += 1
+        else:
+            new_note = old_note
+        res.append(new_note)
+    logger.debug(f"Attenuated {notes_attenuated} notes and boosted {notes_boosted} "
+                 f"notes")
+    return res
+
+
 def timeline_fix_gate_lens(timeline: List[AbsoluteCompleteNote],
                            song: Song,
                            mapping: InstrumentParameterMapping) -> List[
