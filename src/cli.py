@@ -12,6 +12,13 @@ from midi_to_song.models import TestingOptionsForLoadInstrumentParams
 from utils.logger import create_logger
 from utils.strings import parse_range
 
+try:
+    import pyperclip
+
+    CLIPBOARD_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    CLIPBOARD_AVAILABLE = False
+
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
@@ -77,6 +84,10 @@ def generate_and_parse_args() -> Namespace:
                                action="store_true",
                                help="Forcibly load the instrument parameter mapping "
                                     "file, even if it would normally cause errors.")
+    testing_group.add_argument("--test-copy-result-to-clipboard", action="store_true",
+                               help="If pyperclip (pip install pyperclip) is available "
+                                    "and this option is specified, the output will "
+                                    "also be copied to the clipboard.")
 
     args = parser.parse_args()
     logger.debug(f"Received arguments: {args}")

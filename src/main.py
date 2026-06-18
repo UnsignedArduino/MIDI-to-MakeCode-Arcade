@@ -8,6 +8,13 @@ from cli import generate_and_parse_args, generate_melodic_instrument_sample, \
 from midi_to_song.instruments import load_instrument_params
 from utils.logger import create_logger, set_all_stdout_logger_levels
 
+try:
+    import pyperclip
+
+    CLIPBOARD_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    CLIPBOARD_AVAILABLE = False
+
 args = generate_and_parse_args()
 logger = create_logger(name=__name__, level=logging.INFO)
 set_all_stdout_logger_levels(args.debug)
@@ -54,4 +61,11 @@ if output_path is not None:
     output_path.write_text(final_output)
 else:
     logger.info(f"Writing result to stdout")
-    print(f"\n{final_output}")
+    print(f"\n{final_output}\n")
+
+if args.test_copy_result_to_clipboard:
+    if not CLIPBOARD_AVAILABLE:
+        raise RuntimeError("pyperclip is not available (pip install pyperclip), cannot "
+                           "automatically copy result to the clipboard!")
+    pyperclip.copy(final_output)
+    logger.info("Copied result to clipboard")
