@@ -165,8 +165,8 @@ def generate_single_conversion(midi: MidiFile,
     elif generate_extra_code:
         logger.debug("Writing out extra code")
         final_output = f"""const songHex = {final_output};
-const midiDrumNoteMap = {drum_note_list};
-const trackInstrumentMap = {track_instrument_list};
+const midiDrumNoteMap: number[] = {drum_note_list};
+const trackInstrumentMap: number[] = {track_instrument_list};
 """
     # Add comments
     if testing_opts_for_midi_to_song.replace_all_melodics_with is not None:

@@ -59,7 +59,7 @@ About melodic pitch compensation:
   is global. Set k=0 or remove it to disable if you tuned instruments with 
   their correct ranges. 
 "
-melodic_pitch_comp_k: 0.35
+melodic_pitch_comp_k: 0.1
 melodic_instruments:
   # Pianos
   - instrument: 0
