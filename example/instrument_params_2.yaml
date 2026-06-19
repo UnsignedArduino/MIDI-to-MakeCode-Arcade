@@ -1372,42 +1372,45 @@ drum_instruments:
       - { waveform: noise, target_freq: 5000, target_vol: 200, duration: 35 }
       - { waveform: noise, target_freq: 5000, target_vol: 0, duration: 30 }
   - note: 83
-    _comment: Hi Half-Open Hi-Hat
-    start_freq: 8000
-    start_vol: 800
+    _comment: Jingle Bell
+    start_freq: 2200
+    start_vol: 880
     steps:
-      - { waveform: noise, target_freq: 8000, target_vol: 500, duration: 18 }
-      - { waveform: noise, target_freq: 8000, target_vol: 150, duration: 45 }
-      - { waveform: noise, target_freq: 8000, target_vol: 0, duration: 45 }
+      - { waveform: sine, target_freq: 2500, target_vol: 700, duration: 30 }
+      - { waveform: sine, target_freq: 2300, target_vol: 400, duration: 80 }
+      - { waveform: sine, target_freq: 2100, target_vol: 100, duration: 150 }
+      - { waveform: sine, target_freq: 1900, target_vol: 0, duration: 150 }
   - note: 84
-    _comment: High Hi-Hat
-    start_freq: 9000
-    start_vol: 780
+    _comment: Bell Tree
+    start_freq: 1200
+    start_vol: 850
     steps:
-      - { waveform: noise, target_freq: 9000, target_vol: 550, duration: 40 }
-      - { waveform: noise, target_freq: 9000, target_vol: 180, duration: 80 }
-      - { waveform: noise, target_freq: 9000, target_vol: 0, duration: 90 }
+      - { waveform: sine, target_freq: 2000, target_vol: 800, duration: 80 }
+      - { waveform: sine, target_freq: 3200, target_vol: 750, duration: 100 }
+      - { waveform: sine, target_freq: 4500, target_vol: 500, duration: 120 }
+      - { waveform: sine, target_freq: 5500, target_vol: 100, duration: 200 }
+      - { waveform: sine, target_freq: 6000, target_vol: 0, duration: 200 }
   - note: 85
-    _comment: Crash Cymbal 3
-    start_freq: 6500
+    _comment: Castanets
+    start_freq: 1800
+    start_vol: 950
+    steps:
+      - { waveform: cycle_16, target_freq: 1400, target_vol: 500, duration: 8 }
+      - { waveform: cycle_16, target_freq: 1000, target_vol: 0, duration: 14 }
+  - note: 86
+    _comment: Mute Surdo
+    start_freq: 120
     start_vol: 1000
     steps:
-      - { waveform: noise, target_freq: 6500, target_vol: 700, duration: 70 }
-      - { waveform: noise, target_freq: 6500, target_vol: 300, duration: 200 }
-      - { waveform: noise, target_freq: 6500, target_vol: 0, duration: 300 }
-  - note: 86
-    _comment: Ride Cymbal 3
-    start_freq: 5500
-    start_vol: 720
-    steps:
-      - { waveform: noise, target_freq: 5500, target_vol: 420, duration: 40 }
-      - { waveform: noise, target_freq: 5500, target_vol: 120, duration: 80 }
-      - { waveform: noise, target_freq: 5500, target_vol: 0, duration: 110 }
+      - { waveform: sine, target_freq: 80, target_vol: 700, duration: 25 }
+      - { waveform: sine, target_freq: 55, target_vol: 200, duration: 35 }
+      - { waveform: sine, target_freq: 45, target_vol: 0, duration: 30 }
   - note: 87
-    _comment: Open Hi-Hat 2
-    start_freq: 8000
-    start_vol: 820
+    _comment: Open Surdo
+    start_freq: 100
+    start_vol: 1000
     steps:
-      - { waveform: noise, target_freq: 8000, target_vol: 650, duration: 60 }
-      - { waveform: noise, target_freq: 8000, target_vol: 250, duration: 130 }
-      - { waveform: noise, target_freq: 8000, target_vol: 0, duration: 140 }
+      - { waveform: sine, target_freq: 75, target_vol: 850, duration: 40 }
+      - { waveform: sine, target_freq: 55, target_vol: 500, duration: 80 }
+      - { waveform: sine, target_freq: 45, target_vol: 150, duration: 120 }
+      - { waveform: sine, target_freq: 40, target_vol: 0, duration: 120 }
