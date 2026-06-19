@@ -1275,6 +1275,41 @@ drum_instruments:
     steps:
       - { waveform: noise, target_freq: 5000, target_vol: 280, duration: 9 }
       - { waveform: noise, target_freq: 5000, target_vol: 0, duration: 18 }
+  - note: 71
+    _comment: Short Whistle
+    start_freq: 2800
+    start_vol: 900
+    steps:
+      - { waveform: sine, target_freq: 3200, target_vol: 880, duration: 40 }
+      - { waveform: sine, target_freq: 3000, target_vol: 400, duration: 50 }
+      - { waveform: sine, target_freq: 2600, target_vol: 0, duration: 40 }
+  - note: 72
+    _comment: Long Whistle
+    start_freq: 2400
+    start_vol: 850
+    steps:
+      - { waveform: sine, target_freq: 3000, target_vol: 900, duration: 80 }
+      - { waveform: sine, target_freq: 3400, target_vol: 880, duration: 120 }
+      - { waveform: sine, target_freq: 3200, target_vol: 800, duration: 120 }
+      - { waveform: sine, target_freq: 2600, target_vol: 0, duration: 100 }
+  - note: 73
+    _comment: Short Guiro
+    start_freq: 800
+    start_vol: 850
+    steps:
+      - { waveform: noise_tunable, target_freq: 600, target_vol: 700, duration: 25 }
+      - { waveform: noise_tunable, target_freq: 400, target_vol: 300, duration: 35 }
+      - { waveform: noise_tunable, target_freq: 250, target_vol: 0, duration: 30 }
+  - note: 74
+    _comment: Long Guiro
+    start_freq: 900
+    start_vol: 880
+    steps:
+      - { waveform: noise_tunable, target_freq: 750, target_vol: 750, duration: 45 }
+      - { waveform: noise_tunable, target_freq: 600, target_vol: 650, duration: 50 }
+      - { waveform: noise_tunable, target_freq: 500, target_vol: 700, duration: 50 }
+      - { waveform: noise_tunable, target_freq: 380, target_vol: 400, duration: 55 }
+      - { waveform: noise_tunable, target_freq: 250, target_vol: 0, duration: 50 }
   - note: 75
     _comment: Claves
     start_freq: 1500
