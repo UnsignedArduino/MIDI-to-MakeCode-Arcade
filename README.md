@@ -1,76 +1,175 @@
 # MIDI-to-MakeCode-Arcade
 
 A Python tool to convert a MIDI file to a MakeCode Arcade song! (Work in
-progress)
-
-Some bug squashing may be needed but otherwise this tool is complete.
-
-Web version will be available soon in a different repo.
+progress) Supports General MIDI 1 (all 128 melodic instruments and the standard
+drum kit), the extended drum note range of General MIDI 2, and some Roland GS/
+Yamaha XG SysEx commands.
 
 ## Install
 
 1. Download and install Python.
 2. Clone this repo.
-3. Install all the requirements in [`requirements.txt`](requirements.txt)
-
-> You may need to edit commands listed in this repo to use `py` or `python3` if
-> `python` doesn't work.
+3. install all requirements in [`requirements.txt`](requirements.txt) (into a
+   virtual environment if you want).
 
 ## Usage
 
-Run [`src/main.py`](src/main.py) at the root of the repository in the terminal.
-(It is a CLI app)
+Run [`src/main.py`](src/main.py) at the root of the repository in the terminal
+(it is a CLI app).
+
+As of the time of this writing, this code outputs velocity information properly
+but the MakeCode Arcade song playback will ignore it - per chord velocity is
+only available in beta.
 
 ### Example commands
 
-To convert the MIDI file `Never_Gonna_Give_You_Up.mid` and print the Arcade
-song to standard output with the default track "dog", no divisor, (divisor of
-1), and no character break.
+To convert the MIDI file `Never Gonna Give You Up.mid`:
 
 ```commandline
-python src/main.py -i "Never_Gonna_Give_You_Up.mid"
+python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml"
 ```
 
-To convert the MIDI file at the absolute path
-`E:\Arcade MIDI to Song\testing\Friend_Like_Me_Disneys_Aladdin.mid` and
-write the output to `Friend_Like_Me_Disneys_Aladdin song.ts` in the current
-directory with the "computer" track, a divisor of 2, a character break of 512,
-and with debug messages on.
+This will print out the song buffer which you can paste into MakeCode Arcade.
+It will use [`example/instrument_params.yaml`](example/instrument_params.yaml),
+which is an instrument parameter file that defines what each of the general
+MIDI 1's 128 melodic instruments and standard drum kit sound like. An
+instrument parameter file is always required.
+
+If the output is too big to easily copy from the terminal, use `-o` to write to
+a file: (this will **overwrite it**)
 
 ```commandline
-python src/main.py -i "E:\Arcade MIDI to Song\testing\Friend_Like_Me_Disneys_Aladdin.mid" -o "Friend_Like_Me_Disneys_Aladdin song.ts" -d 2 -t computer -b 512 --debug
+python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" -o "Never Gonna Give You Up.ts"
+```
+
+If you would like to visualize your song output, you can import
+https://github.com/UnsignedArduino/Song-Visualizer and replace the code at the
+top with the output of this command:
+
+```commandline
+python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" --generate-extra-code
+```
+
+The `--generate-extra-code` flag will write out extra information that the
+visualizer above can use to make the visuals more accurate.
+[Here](https://makecode.com/_E75AehCdch5c) is an example (once again, at the
+time of writing, per-chord velocity is in beta, so import into the beta editor
+if desired). In the visualizer, you can press B to open the track list and use
+arrow keys to highlight a particular track if desired.
+
+### Defining your own instrument parameter file
+
+If you would like to create your own instrument parameter file, you can look at
+[`instrument_params.yaml`](example/instrument_params.yaml) in the
+[`example`](example) directory, which was tuned by me, to see what the YAML
+format looks like.
+[`instrument_params_2.yaml`](example/instrument_params_2.yaml) was generated
+completely by Claude and sounds interesting.
+
+You can use something like
+[SpessaSynth](https://spessasus.github.io/SpessaSynth/) as it is a simple web
+app that you can use to reference your favorite MIDI sound font files when
+defining your own file. (it is a good MIDI visualizer as well)
+
+#### Defining melodic instruments
+
+This tool supports all 128 general MIDI 1 instruments. The following commands
+can be helpful as you write or tune melodic instruments, alongside
+[this tool](https://arcade.makecode.com/18336-29202-55655-79439) by @riknoll.
+
+`basic_test.mid` can be a simple song written for the piano or any other
+instrument. `--test-ask-to-replace-all-melodics-with` will prompt you to
+replace it with a melodic MIDI instrument (0-127). `--test-generate-code` will
+output code ready to play, and `--test-copy-result-to-clipboard` will work if
+`pyperclip` is installed (use `pip install pyperclip`). And obviously,
+substitute `-p` with the file you are working on.
+`--test-force-instrument-param-load` is used as the file you are working on may
+not have all instruments defined yet.
+
+```commandline
+python src/main.py -i "basic_test.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-melodics-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
+```
+
+`--test-sample-melodic-instruments` will replace the melodic instruments in the
+MIDI file multiple times and generate a script, useful to compare multiple
+instruments in a family together. Use commas to separate what you want (e.g.
+`1,2,4-6` -> [1, 2, 4, 5, 6]).
+
+```commandline
+python src/main.py -i "basic_test.mid" -p "example/instrument_params.yaml" --test-sample-melodic-instruments "3-6" --test-force-instrument-param-load --debug
+```
+
+#### Defining drum notes
+
+This tool only supports the standard drum kit, so define notes 27 through 87.
+
+Similar to the first command above, `--test-ask-to-replace-all-drums-with` will
+prompt you to replace all the drum instruments in a MIDI file with a drum note
+(27-87).
+
+```commandline
+python src/main.py -i "testing/basic_test_3/basic_test_3.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-drums-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
 ```
 
 ### Help text
 
 ```commandline
-usage: ArcadeMIDItoSong [-h] --input INPUT [--output OUTPUT] [--track TRACK]
-                        [--divisor DIVISOR] [--break CHAR_BREAK] [--debug]
+usage: main.py [-h] --input INPUT
+               --input-instrument-params INPUT_INSTRUMENT_PARAMS
+               [--output OUTPUT] [--generate-extra-code] [--debug]
+               [--test-replace-all-melodics-with TEST_REPLACE_ALL_MELODICS_WITH]
+               [--test-ask-to-replace-all-melodics-with]
+               [--test-sample-melodic-instruments TEST_SAMPLE_MELODIC_INSTRUMENTS]
+               [--test-replace-all-drums-with TEST_REPLACE_ALL_DRUMS_WITH]
+               [--test-ask-to-replace-all-drums-with] [--test-generate-code]
+               [--test-force-instrument-param-load]
+               [--test-copy-result-to-clipboard]
 
-A program to convert MIDI files to the Arcade song format.
+Convert a MIDI file to a MakeCode Arcade song.
 
 options:
   -h, --help            show this help message and exit
-  --input INPUT, -i INPUT
-                        Input MIDI file
-  --output OUTPUT, -o OUTPUT
-                        Output text file path, otherwise we will output to
-                        standard output.
-  --track TRACK, -t TRACK
-                        A track to use, which changes the instrument.
-                        Available tracks include ['dog', 'duck', 'cat',
-                        'fish', 'car', 'computer', 'burger', 'cherry',
-                        'lemon']. (You can also use indices 0-8) Defaults to
-                        'dog'.
-  --divisor DIVISOR, -d DIVISOR
-                        A divisor to reduce the number of measures used. A
-                        higher integer means a longer song can fit in the
-                        maximum of 255 measures of a song, but with less
-                        precision. Must be greater than or equal to 1, and
-                        defaults to 1 for no division.
-  --break CHAR_BREAK, -b CHAR_BREAK
-                        Break the hex string after so many characters.
-                        Defaults to 0 for no breaking.
+  --input, -i INPUT     Input MIDI file.
+  --input-instrument-params, -p INPUT_INSTRUMENT_PARAMS
+                        Input instrument parameter mapping file.
+  --output, -o OUTPUT   Output TypeScript file path, otherwise will write to
+                        stdout. If specified, this will overwrite the file if
+                        it already exists, and the parent directories must
+                        exist.
+  --generate-extra-code
+                        Generate extra code to help song visualizers display
+                        properly. The output will be valid TypeScript code.
+                        Incompatible with test options that sample melodic
+                        instruments.
   --debug               Include debug messages. Defaults to info and greater
                         severity messages only.
+
+Testing options:
+  --test-replace-all-melodics-with TEST_REPLACE_ALL_MELODICS_WITH
+                        Replace all melodic tracks in a song with the specific
+                        MIDI instrument.
+  --test-ask-to-replace-all-melodics-with
+                        Prompt the user to replace all melodic tracks in a
+                        song with a specific MIDI instrument.
+  --test-sample-melodic-instruments TEST_SAMPLE_MELODIC_INSTRUMENTS
+                        Pass in a range of MIDI instruments to sample, such as
+                        "0,2,4-10" to replicate the song several times and
+                        replace all melodic tracks in the song with the
+                        specific MIDI instrument. Basically does what `--test-
+                        replace-all-melodics-with` and `--test-generate-code`
+                        but with a bunch of specified instruments.
+  --test-replace-all-drums-with TEST_REPLACE_ALL_DRUMS_WITH
+                        Replace all drum notes in a song with the specific
+                        drum note.
+  --test-ask-to-replace-all-drums-with
+                        Prompt the user to replace all drum notes in a song
+                        with a specific drum note.
+  --test-generate-code  Generate the MakeCode Arcade code to play the song.
+  --test-force-instrument-param-load
+                        Forcibly load the instrument parameter mapping file,
+                        even if it would normally cause errors.
+  --test-copy-result-to-clipboard
+                        If pyperclip (pip install pyperclip) is available and
+                        this option is specified, the output will also be
+                        copied to the clipboard.
 ```

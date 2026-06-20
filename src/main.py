@@ -1,76 +1,71 @@
 import logging
-from argparse import ArgumentParser
 from pathlib import Path
 
 from mido import MidiFile
 
-from arcade.tracks import get_available_tracks
-from converter import OutputOptions, convert
+from cli import generate_and_parse_args, generate_melodic_instrument_sample, \
+    generate_single_conversion, generate_testing_options
+from midi_to_song.instruments import load_instrument_params
 from utils.logger import create_logger, set_all_stdout_logger_levels
 
-tracks = get_available_tracks()
-track_names = [t.name.lower() for t in tracks]
-track_ids = [str(t.id) for t in tracks]
+try:
+    import pyperclip
 
-parser = ArgumentParser(prog="ArcadeMIDItoSong",
-                        description="A program to convert MIDI files to the "
-                                    "Arcade song format. ")
-parser.add_argument("--input", "-i", required=True, type=Path,
-                    help="Input MIDI file")
-parser.add_argument("--output", "-o", type=Path,
-                    help="Output text file path, otherwise we will output to "
-                         "standard output.")
-parser.add_argument("--track", "-t", metavar="TRACK",
-                    choices=track_ids + track_names,
-                    default=track_names[0],
-                    help=f"A track to use, which changes the instrument. "
-                         f"Available tracks include {track_names}. (You can "
-                         f"also use indices 0-{len(track_ids) - 1}) Defaults "
-                         f"to '{track_names[0]}'.")
-parser.add_argument("--divisor", "-d", type=float,
-                    default=1,
-                    help="A divisor to reduce (or increase!) the number of "
-                         "measures used. A higher float means a longer song "
-                         "can fit in the maximum of 255 measures of a song, "
-                         "but with less precision. Must be greater than 0, "
-                         "defaults to 1 for no division.")
-parser.add_argument("--break", "-b", type=int, dest="char_break",
-                    default=0,
-                    help="Break the hex string after so many characters. "
-                         "Defaults to 0 for no breaking.")
-parser.add_argument("--debug", action="store_const",
-                    const=logging.DEBUG, default=logging.INFO,
-                    help="Include debug messages. Defaults to info and "
-                         "greater severity messages only.")
-args = parser.parse_args()
+    CLIPBOARD_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    CLIPBOARD_AVAILABLE = False
+
+args = generate_and_parse_args()
 logger = create_logger(name=__name__, level=logging.INFO)
 set_all_stdout_logger_levels(args.debug)
-logger.debug(f"Received arguments: {args}")
+
+(testing_opts_for_load_instrument_params,
+ testing_opts_for_midi_to_song) = generate_testing_options(args)
 
 input_path = Path(args.input)
-logger.debug(f"Input path is {input_path}")
+logger.info(f"Reading MIDI file from {input_path}")
 
-midi = MidiFile(input_path)
-logger.debug(f"MIDI is {midi.length}s long")
+mid = MidiFile(input_path)
+logger.debug(f"Found {len(mid.tracks)} tracks, length of {mid.length}s")
 
-divisor = float(args.divisor)
-if not divisor > 0:
-    raise ValueError(f"divisor must be a float greater than 0, "
-                     f"not {divisor}!")
-logger.debug(f"Using divisor of {divisor}")
+input_instrument_param_path = Path(args.input_instrument_params)
+logger.info(
+    f"{"Forcibly reading" if testing_opts_for_load_instrument_params.force_load else "Reading"}"
+    f" instrument params from {input_instrument_param_path}")
 
-char_break = int(args.char_break)
-if char_break < 0:
-    raise ValueError(f"break must be an integer greater than or equal to 0, "
-                     f"not {char_break}!")
+mapping = load_instrument_params(input_instrument_param_path.read_text(),
+                                 testing_opts_for_load_instrument_params)
+logger.debug(f"Mapped {len(mapping.melodic_instruments)} melodic instruments and "
+             f"{len(mapping.drum_instruments)} drum instruments")
 
-result = convert(midi, OutputOptions.MAKECODE_ARCADE_STRING, args.track, divisor,
-                 char_break)
+melodic_sample = args.test_sample_melodic_instruments
+generate_extra_code = args.generate_extra_code
+if melodic_sample and generate_extra_code:
+    raise ValueError("Melodic sample option and generating extra code are mutually "
+                     "exclusive!")
+if testing_opts_for_midi_to_song.generate_code and generate_extra_code:
+    raise ValueError("Generating sample code and generating extra code are mutually "
+                     "exclusive!")
 
-output_path = args.output
-if output_path is None:
-    logger.debug("No output path provided, printing to standard output")
-    print(result)
+if melodic_sample is not None:
+    final_output = generate_melodic_instrument_sample(mid, mapping,
+                                                      testing_opts_for_midi_to_song,
+                                                      melodic_sample)
 else:
-    logger.debug(f"Writing to {output_path}")
-    Path(output_path).write_text(result)
+    final_output = generate_single_conversion(mid, mapping, generate_extra_code,
+                                              testing_opts_for_midi_to_song)
+
+output_path = Path(args.output) if args.output is not None else None
+if output_path is not None:
+    logger.info(f"Writing result to {output_path}")
+    output_path.write_text(final_output)
+else:
+    logger.info(f"Writing result to stdout")
+    print(f"\n{final_output}\n")
+
+if args.test_copy_result_to_clipboard:
+    if not CLIPBOARD_AVAILABLE:
+        raise RuntimeError("pyperclip is not available (pip install pyperclip), cannot "
+                           "automatically copy result to the clipboard!")
+    pyperclip.copy(final_output)
+    logger.info("Copied result to clipboard")
