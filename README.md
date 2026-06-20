@@ -52,6 +52,10 @@ python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_param
 
 The `--generate-extra-code` flag will write out extra information that the
 visualizer above can use to make the visuals more accurate.
+[Here](https://makecode.com/_E75AehCdch5c) is an example (once again, at the
+time of writing, per-chord velocity is in beta, so import into the beta editor
+if desired). In the visualizer, you can press B to open the track list and use
+arrow keys to highlight a particular track if desired.
 
 ### Defining your own instrument parameter file
 
