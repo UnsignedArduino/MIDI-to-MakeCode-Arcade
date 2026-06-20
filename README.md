@@ -57,6 +57,25 @@ time of writing, per-chord velocity is in beta, so import into the beta editor
 if desired). In the visualizer, you can press B to open the track list and use
 arrow keys to highlight a particular track if desired.
 
+### MIDI standards/features supported
+
+Standards:
+
+* [General MIDI 1](https://en.wikipedia.org/wiki/General_MIDI) melodic
+  instruments (0-127) and standard drum kit notes (35-81)
+* [General MIDI 2](https://en.wikipedia.org/wiki/General_MIDI_Level_2) extended
+  drum note range (27-87) on the standard drum kit only
+* Roland GS/Yamaha XG SysEx messages for track switching to standard drums only
+
+Features:
+
+* Tempo changes
+* MIDI ports and channels
+* Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
+  track to a drum track and back (will only use the standard drum kit notes)
+* Per note velocity (MakeCode Arcade will ignore this for now, but it is
+  song's output - MakeCode Arcade beta at the time of writing supports it)
+
 ### Defining your own instrument parameter file
 
 If you would like to create your own instrument parameter file, you can look at
