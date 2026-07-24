@@ -5,12 +5,12 @@ from typing import List, Tuple
 
 from mido import MidiFile
 
-from arcade.music import encode_song_to_hex
-from midi_to_song import InstrumentParameterMapping, TestingOptionsForMIDIToSong, \
-    convert_midi_to_song
-from midi_to_song.models import TestingOptionsForLoadInstrumentParams
-from utils.logger import create_logger
-from utils.strings import parse_range
+from midi2mkcd.arcade.music import encode_song_to_hex
+from midi2mkcd.midi_to_song import InstrumentParameterMapping, \
+    TestingOptionsForMIDIToSong, convert_midi_to_song
+from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
+from midi2mkcd.utils.logger import create_logger
+from midi2mkcd.utils.strings import parse_range
 
 try:
     import pyperclip
@@ -85,9 +85,9 @@ def generate_and_parse_args() -> Namespace:
                                help="Forcibly load the instrument parameter mapping "
                                     "file, even if it would normally cause errors.")
     testing_group.add_argument("--test-copy-result-to-clipboard", action="store_true",
-                               help="If pyperclip (pip install pyperclip) is available "
-                                    "and this option is specified, the output will "
-                                    "also be copied to the clipboard.")
+                               help="If pyperclip (uv pip install pyperclip) is "
+                                    "available and this option is specified, the "
+                                    "output will also be copied to the clipboard.")
 
     args = parser.parse_args()
     logger.debug(f"Received arguments: {args}")

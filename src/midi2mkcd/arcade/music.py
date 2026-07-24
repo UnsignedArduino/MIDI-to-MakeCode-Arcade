@@ -1,9 +1,11 @@
 # https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts
+import logging
 import struct
-from typing import Tuple
+from typing import List, Optional, Tuple
 
-from arcade.music_types import *
-from utils.logger import create_logger
+from midi2mkcd.arcade.music_types import DrumInstrument, DrumSoundStep, \
+    EnharmonicSpelling, Envelope, Instrument, LFO, Note, NoteEvent, Song, Track
+from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 

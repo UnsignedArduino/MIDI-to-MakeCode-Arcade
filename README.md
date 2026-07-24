@@ -7,14 +7,13 @@ Yamaha XG SysEx commands.
 
 ## Install
 
-1. Download and install Python.
+1. Download and install Python (>=3.14) and the `uv` package manager.
 2. Clone this repo.
-3. install all requirements in [`requirements.txt`](requirements.txt) (into a
-   virtual environment if you want).
+3. Run `uv sync` to create a virtual environment and install all dependencies.
 
 ## Usage
 
-Run [`src/main.py`](src/main.py) at the root of the repository in the terminal
+Run `uv run python -m midi2mkcd` at the root of the repository in the terminal
 (it is a CLI app).
 
 As of the time of this writing, this code outputs velocity information properly
@@ -26,11 +25,12 @@ only available in beta.
 To convert the MIDI file `Never Gonna Give You Up.mid`:
 
 ```commandline
-python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml"
+uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml"
 ```
 
 This will print out the song buffer which you can paste into MakeCode Arcade.
-It will use [`example/instrument_params.yaml`](example/instrument_params.yaml),
+It will use [
+`example/instrument_params.yaml`](examples/instrument_params.yaml),
 which is an instrument parameter file that defines what each of the general
 MIDI 1's 128 melodic instruments and standard drum kit sound like. An
 instrument parameter file is always required.
@@ -39,7 +39,7 @@ If the output is too big to easily copy from the terminal, use `-o` to write to
 a file: (this will **overwrite it**)
 
 ```commandline
-python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" -o "Never Gonna Give You Up.ts"
+uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" -o "Never Gonna Give You Up.ts"
 ```
 
 If you would like to visualize your song output, you can import
@@ -47,7 +47,7 @@ https://github.com/UnsignedArduino/Song-Visualizer and replace the code at the
 top with the output of this command:
 
 ```commandline
-python src/main.py -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" --generate-extra-code
+uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" --generate-extra-code
 ```
 
 The `--generate-extra-code` flag will write out extra information that the
@@ -79,10 +79,10 @@ Features:
 ### Defining your own instrument parameter file
 
 If you would like to create your own instrument parameter file, you can look at
-[`instrument_params.yaml`](example/instrument_params.yaml) in the
-[`example`](example) directory, which was tuned by me, to see what the YAML
+[`instrument_params.yaml`](examples/instrument_params.yaml) in the
+[`example`](examples) directory, which was tuned by me, to see what the YAML
 format looks like.
-[`instrument_params_2.yaml`](example/instrument_params_2.yaml) was generated
+[`instrument_params_2.yaml`](examples/instrument_params_2.yaml) was generated
 completely by Claude and sounds interesting.
 
 You can use something like
@@ -100,13 +100,13 @@ can be helpful as you write or tune melodic instruments, alongside
 instrument. `--test-ask-to-replace-all-melodics-with` will prompt you to
 replace it with a melodic MIDI instrument (0-127). `--test-generate-code` will
 output code ready to play, and `--test-copy-result-to-clipboard` will work if
-`pyperclip` is installed (use `pip install pyperclip`). And obviously,
+`pyperclip` is installed (use `uv pip install pyperclip`). And obviously,
 substitute `-p` with the file you are working on.
 `--test-force-instrument-param-load` is used as the file you are working on may
 not have all instruments defined yet.
 
 ```commandline
-python src/main.py -i "basic_test.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-melodics-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
+uv run python -m midi2mkcd -i "basic_test.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-melodics-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
 ```
 
 `--test-sample-melodic-instruments` will replace the melodic instruments in the
@@ -115,7 +115,7 @@ instruments in a family together. Use commas to separate what you want (e.g.
 `1,2,4-6` -> [1, 2, 4, 5, 6]).
 
 ```commandline
-python src/main.py -i "basic_test.mid" -p "example/instrument_params.yaml" --test-sample-melodic-instruments "3-6" --test-force-instrument-param-load --debug
+uv run python -m midi2mkcd -i "basic_test.mid" -p "example/instrument_params.yaml" --test-sample-melodic-instruments "3-6" --test-force-instrument-param-load --debug
 ```
 
 #### Defining drum notes
@@ -127,7 +127,7 @@ prompt you to replace all the drum instruments in a MIDI file with a drum note
 (27-87).
 
 ```commandline
-python src/main.py -i "testing/basic_test_3/basic_test_3.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-drums-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
+uv run python -m midi2mkcd -i "testing/basic_test_3/basic_test_3.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-drums-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
 ```
 
 ### Help text
@@ -188,7 +188,7 @@ Testing options:
                         Forcibly load the instrument parameter mapping file,
                         even if it would normally cause errors.
   --test-copy-result-to-clipboard
-                        If pyperclip (pip install pyperclip) is available and
+                        If pyperclip (uv pip install pyperclip) is available and
                         this option is specified, the output will also be
                         copied to the clipboard.
 ```

@@ -5,23 +5,25 @@ from typing import Dict, List, Optional, Tuple
 
 from mido import MidiFile
 
-from arcade.music_types import EnharmonicSpelling, Envelope, Instrument, Note, \
+from midi2mkcd.arcade.music_types import EnharmonicSpelling, Envelope, Instrument, Note, \
     NoteEvent, Song, Track
-from midi_to_song.instruments import InstrumentParameterMapping
-from midi_to_song.models import AbsoluteCompleteChordWithTick, AbsoluteCompleteNote, \
+from midi2mkcd.midi_to_song.instruments import InstrumentParameterMapping
+from midi2mkcd.midi_to_song.models import AbsoluteCompleteChordWithTick, \
+    AbsoluteCompleteNote, \
     AbsoluteCompleteNoteWithTick, AbsoluteTickMessage, AbsoluteTimeMessage, \
     AbsoluteTimeMessageWithInstrument, ChannelState, DrumDeterminationSource, \
     TestingOptionsForMIDIToSong
-from midi_to_song.timeline.parser import timeline_build, timeline_find_instrument_data, \
+from midi2mkcd.midi_to_song.timeline.parser import timeline_build, \
+    timeline_find_instrument_data, \
     timeline_group_messages
-from midi_to_song.timeline.processor import find_all_drum_chords_used, \
+from midi2mkcd.midi_to_song.timeline.processor import find_all_drum_chords_used, \
     timeline_apply_pitch_compensation, timeline_fix_gate_lens, \
     timeline_group_by_instrument, \
     timeline_group_into_perfect_chords, \
     timeline_quantize_to_song_ticks, timeline_resolve_overlapping_chords, \
     timeline_split_tracks_for_ranges
-from midi_to_song.timeline.validation import timeline_checks
-from utils.logger import create_logger
+from midi2mkcd.midi_to_song.timeline.validation import timeline_checks
+from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 

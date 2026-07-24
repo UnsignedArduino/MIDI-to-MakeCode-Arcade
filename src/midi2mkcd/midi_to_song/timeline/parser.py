@@ -3,10 +3,10 @@ from typing import Dict, List, Tuple
 
 from mido import MidiFile, tick2second
 
-from midi_to_song.models import AbsoluteCompleteNote, \
+from midi2mkcd.midi_to_song.models import AbsoluteCompleteNote, \
     AbsoluteTickMessage, AbsoluteTimeMessage, \
     AbsoluteTimeMessageWithInstrument, ChannelState, DrumDeterminationSource
-from utils.logger import create_logger
+from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 

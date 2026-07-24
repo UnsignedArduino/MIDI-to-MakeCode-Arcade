@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
-from utils.logger import create_logger
+from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 

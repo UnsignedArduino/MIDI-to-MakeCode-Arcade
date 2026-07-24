@@ -5,9 +5,10 @@ from typing import Dict, Optional
 
 from yaml import safe_load
 
-from arcade.music_types import DrumInstrument, DrumSoundStep, Envelope, Instrument, LFO
-from midi_to_song.models import TestingOptionsForLoadInstrumentParams
-from utils.logger import create_logger
+from midi2mkcd.arcade.music_types import DrumInstrument, DrumSoundStep, Envelope, \
+    Instrument, LFO
+from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
+from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 

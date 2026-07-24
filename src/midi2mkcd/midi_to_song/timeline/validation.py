@@ -1,10 +1,10 @@
 import logging
 from typing import List
 
-from arcade.music_types import Song
-from midi_to_song import InstrumentParameterMapping
-from midi_to_song.models import AbsoluteCompleteChordWithTick
-from utils.logger import create_logger
+from midi2mkcd.arcade.music_types import Song
+from midi2mkcd.midi_to_song import InstrumentParameterMapping
+from midi2mkcd.midi_to_song.models import AbsoluteCompleteChordWithTick
+from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 
