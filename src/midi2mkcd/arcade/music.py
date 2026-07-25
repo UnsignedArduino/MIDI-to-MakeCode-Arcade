@@ -1,16 +1,25 @@
 # https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts
 import logging
 import struct
-from typing import List, Optional, Tuple
 
-from midi2mkcd.arcade.music_types import DrumInstrument, DrumSoundStep, \
-    EnharmonicSpelling, Envelope, Instrument, LFO, Note, NoteEvent, Song, Track
+from midi2mkcd.arcade.music_types import (
+    LFO,
+    DrumInstrument,
+    DrumSoundStep,
+    EnharmonicSpelling,
+    Envelope,
+    Instrument,
+    Note,
+    NoteEvent,
+    Song,
+    Track,
+)
 from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
-def set_8_bit_number(buf: bytearray, offset: int, value: int):
+def set_8_bit_number(buf: bytearray, offset: int, value: int) -> None:
     struct.pack_into("<B", buf, offset, value & 0xFF)
 
 
@@ -18,7 +27,7 @@ def get_8_bit_number(buf: bytearray, offset: int) -> int:
     return struct.unpack_from("<B", buf, offset)[0]
 
 
-def set_16_bit_number(buf: bytearray, offset: int, value: int):
+def set_16_bit_number(buf: bytearray, offset: int, value: int) -> None:
     struct.pack_into("<H", buf, offset, value & 0xFFFF)
 
 
@@ -48,13 +57,15 @@ def encode_song(song: Song) -> bytearray:
     :param song: The MakeCode Arcade song.
     :return: A bytearray, convert this to hex to use in a MakeCode Arcade program.
     """
-    encoded_tracks = [encode_track(track) for track in song.tracks if
-                      len(track.notes) > 0]
-    encoded_track_velocities: List[bytearray] = list(filter(lambda v: v is not None,
-                                                            [encode_track_velocity(
-                                                                track)
-                                                                for track in
-                                                                song.tracks]))
+    encoded_tracks = [
+        encode_track(track) for track in song.tracks if len(track.notes) > 0
+    ]
+    encoded_track_velocities: list[bytearray] = list(
+        filter(
+            lambda v: v is not None,
+            [encode_track_velocity(track) for track in song.tracks],
+        )
+    )
 
     track_length = sum(len(c) for c in (encoded_tracks + encoded_track_velocities))
 
@@ -68,11 +79,11 @@ def encode_song(song: Song) -> bytearray:
 
     current = 7
     for track in encoded_tracks:
-        out[current:current + len(track)] = track
+        out[current : current + len(track)] = track
         current += len(track)
 
     for trackVelocity in encoded_track_velocities:
-        out[current:current + len(trackVelocity)] = trackVelocity
+        out[current : current + len(trackVelocity)] = trackVelocity
         current += len(trackVelocity)
 
     return out
@@ -142,8 +153,9 @@ def encode_drum_instrument(drum: DrumInstrument) -> bytearray:
     return out
 
 
-def encode_note_event(event: NoteEvent, instrument_octave: int,
-                      is_drum_track: bool) -> bytearray:
+def encode_note_event(
+    event: NoteEvent, instrument_octave: int, is_drum_track: bool
+) -> bytearray:
     """
     Encode a MakeCode Arcade note event into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L166
@@ -159,8 +171,9 @@ def encode_note_event(event: NoteEvent, instrument_octave: int,
     set_8_bit_number(out, 4, len(event.notes))
 
     for i, note in enumerate(event.notes):
-        set_8_bit_number(out, 5 + i,
-                         encode_note(note, instrument_octave, is_drum_track))
+        set_8_bit_number(
+            out, 5 + i, encode_note(note, instrument_octave, is_drum_track)
+        )
 
     return out
 
@@ -201,7 +214,7 @@ def encode_track(track: Track) -> bytearray:
         return encode_melodic_track(track)
 
 
-def encode_track_velocity(track: Track) -> Optional[bytearray]:
+def encode_track_velocity(track: Track) -> bytearray | None:
     """
     Encode a MakeCode Arcade track's velocity data into a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L200
@@ -209,8 +222,9 @@ def encode_track_velocity(track: Track) -> Optional[bytearray]:
     :param track: The MakeCode Arcade `Track`.
     :return: A bytearray.
     """
-    if not any(note.velocity is not None and note.velocity < 128 for note in
-               track.notes):
+    if not any(
+        note.velocity is not None and note.velocity < 128 for note in track.notes
+    ):
         return None
 
     out = bytearray(1 + len(track.notes))
@@ -229,8 +243,9 @@ def encode_melodic_track(track: Track) -> bytearray:
     :return: A bytearray.
     """
     encoded_instrument = encode_instrument(track.instrument)
-    encoded_notes = [encode_note_event(note, track.instrument.octave, False) for note in
-                     track.notes]
+    encoded_notes = [
+        encode_note_event(note, track.instrument.octave, False) for note in track.notes
+    ]
     note_length = sum(len(c) for c in encoded_notes)
 
     out = bytearray(6 + len(encoded_instrument) + note_length)
@@ -239,13 +254,13 @@ def encode_melodic_track(track: Track) -> bytearray:
 
     set_16_bit_number(out, 2, len(encoded_instrument))
     current = 4
-    out[current:current + len(encoded_instrument)] = encoded_instrument
+    out[current : current + len(encoded_instrument)] = encoded_instrument
     current += len(encoded_instrument)
 
     set_16_bit_number(out, current, note_length)
     current += 2
     for note in encoded_notes:
-        out[current:current + len(note)] = note
+        out[current : current + len(note)] = note
         current += len(note)
 
     return out
@@ -273,13 +288,13 @@ def encode_drum_track(track: Track) -> bytearray:
     current = 4
 
     for drum in encoded_drums:
-        out[current:current + len(drum)] = drum
+        out[current : current + len(drum)] = drum
         current += len(drum)
 
     set_16_bit_number(out, current, note_length)
     current += 2
     for note in encoded_notes:
-        out[current:current + len(note)] = note
+        out[current : current + len(note)] = note
         current += len(note)
 
     return out
@@ -306,11 +321,13 @@ def decode_song(buf: bytearray) -> Song:
     :param buf: A bytearray of an entire song.
     :return: A MakeCode Arcade `Song`.
     """
-    res = Song(beats_per_minute=get_16_bit_number(buf, 1),
-               beats_per_measure=get_8_bit_number(buf, 3),
-               ticks_per_beat=get_8_bit_number(buf, 4),
-               measures=get_8_bit_number(buf, 5),
-               tracks=[])
+    res = Song(
+        beats_per_minute=get_16_bit_number(buf, 1),
+        beats_per_measure=get_8_bit_number(buf, 3),
+        ticks_per_beat=get_8_bit_number(buf, 4),
+        measures=get_8_bit_number(buf, 5),
+        tracks=[],
+    )
 
     num_tracks = get_8_bit_number(buf, 6)
     current = 7
@@ -366,7 +383,7 @@ def decode_instrument(buf: bytearray, offset: int) -> Instrument:
     )
 
 
-def decode_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
+def decode_track(buf: bytearray, offset: int) -> tuple[Track, int]:
     """
     Decode a MakeCode Arcade track from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L323
@@ -382,7 +399,7 @@ def decode_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
         return decode_melodic_track(buf, offset)
 
 
-def decode_track_velocity(buf: bytearray, tracks: List[Track], offset: int) -> int:
+def decode_track_velocity(buf: bytearray, tracks: list[Track], offset: int) -> int:
     """
     Decode a MakeCode Arcade track velocity from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L331
@@ -421,18 +438,21 @@ def decode_drum_instrument(buf: bytearray, offset: int) -> DrumInstrument:
 
     for i in range(get_8_bit_number(buf, offset)):
         start = offset + 5 + i * 7
-        res.steps.append(DrumSoundStep(
-            waveform=get_8_bit_number(buf, start),
-            frequency=get_16_bit_number(buf, start + 1),
-            volume=get_16_bit_number(buf, start + 3),
-            duration=get_16_bit_number(buf, start + 5)
-        ))
+        res.steps.append(
+            DrumSoundStep(
+                waveform=get_8_bit_number(buf, start),
+                frequency=get_16_bit_number(buf, start + 1),
+                volume=get_16_bit_number(buf, start + 3),
+                duration=get_16_bit_number(buf, start + 5),
+            )
+        )
 
     return res
 
 
-def decode_note_event(buf: bytearray, offset: int, instrument_octave: int,
-                      is_drum_track: bool) -> NoteEvent:
+def decode_note_event(
+    buf: bytearray, offset: int, instrument_octave: int, is_drum_track: bool
+) -> NoteEvent:
     """
     Decode a MakeCode Arcade note event from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L361
@@ -455,9 +475,7 @@ def decode_note_event(buf: bytearray, offset: int, instrument_octave: int,
     for i in range(get_8_bit_number(buf, offset + 4)):
         res.notes.append(
             decode_note(
-                get_8_bit_number(buf, offset + 5 + i),
-                instrument_octave,
-                is_drum_track
+                get_8_bit_number(buf, offset + 5 + i), instrument_octave, is_drum_track
             )
         )
 
@@ -478,7 +496,7 @@ def decode_note(note: int, instrument_octave: int, is_drum_track: bool) -> Note:
     flags = note >> 6
     res = Note(
         note=note if is_drum_track else ((note & 0x3F) + (instrument_octave - 2) * 12),
-        enharmonic_spelling=EnharmonicSpelling.NORMAL
+        enharmonic_spelling=EnharmonicSpelling.NORMAL,
     )
 
     if flags == 1:
@@ -489,7 +507,7 @@ def decode_note(note: int, instrument_octave: int, is_drum_track: bool) -> Note:
     return res
 
 
-def decode_melodic_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
+def decode_melodic_track(buf: bytearray, offset: int) -> tuple[Track, int]:
     """
     Decode a MakeCode Arcade melodic track from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L392
@@ -503,7 +521,7 @@ def decode_melodic_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
     res = Track(
         id=get_8_bit_number(buf, offset),
         instrument=decode_instrument(buf, offset + 4),
-        notes=[]
+        notes=[],
     )
 
     note_start = offset + 4 + get_16_bit_number(buf, offset + 2)
@@ -520,7 +538,7 @@ def decode_melodic_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
     return res, current_offset
 
 
-def decode_drum_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
+def decode_drum_track(buf: bytearray, offset: int) -> tuple[Track, int]:
     """
     Decode a MakeCode Arcade drum track from a bytearray. Ported from
     https://github.com/microsoft/pxt/blob/master/pxtlib/music.ts#L412
@@ -535,9 +553,11 @@ def decode_drum_track(buf: bytearray, offset: int) -> Tuple[Track, int]:
         id=get_8_bit_number(buf, offset),
         instrument=Instrument(
             amp_envelope=Envelope(attack=0, decay=0, sustain=0, release=0, amplitude=0),
-            waveform=0, octave=0),
+            waveform=0,
+            octave=0,
+        ),
         notes=[],
-        drums=[]
+        drums=[],
     )
 
     drum_byte_length = get_16_bit_number(buf, offset + 2)
@@ -565,7 +585,7 @@ def get_empty_song(measures: int) -> Song:
     :param measures: The number of measures to include.
     :return: A MakeCode Arcade `Song`.
     """
-    tracks: List[Track] = [
+    tracks: list[Track] = [
         Track(
             id=0,
             name="Dog",
@@ -574,12 +594,13 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=1,
                 octave=4,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
-                                      amplitude=1024),
+                amp_envelope=Envelope(
+                    attack=10, decay=100, sustain=500, release=100, amplitude=1024
+                ),
                 pitch_envelope=None,
                 amp_lfo=None,
-                pitch_lfo=LFO(frequency=5, amplitude=0)
-            )
+                pitch_lfo=LFO(frequency=5, amplitude=0),
+            ),
         ),
         Track(
             id=1,
@@ -589,13 +610,15 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=15,
                 octave=4,
-                amp_envelope=Envelope(attack=5, decay=530, sustain=705, release=450,
-                                      amplitude=1024),
-                pitch_envelope=Envelope(attack=5, decay=40, sustain=0, release=100,
-                                        amplitude=40),
+                amp_envelope=Envelope(
+                    attack=5, decay=530, sustain=705, release=450, amplitude=1024
+                ),
+                pitch_envelope=Envelope(
+                    attack=5, decay=40, sustain=0, release=100, amplitude=40
+                ),
                 amp_lfo=LFO(frequency=3, amplitude=20),
-                pitch_lfo=LFO(frequency=6, amplitude=2)
-            )
+                pitch_lfo=LFO(frequency=6, amplitude=2),
+            ),
         ),
         Track(
             id=2,
@@ -605,13 +628,15 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=12,
                 octave=5,
-                amp_envelope=Envelope(attack=150, decay=100, sustain=365, release=400,
-                                      amplitude=1024),
-                pitch_envelope=Envelope(attack=120, decay=300, sustain=0, release=100,
-                                        amplitude=50),
+                amp_envelope=Envelope(
+                    attack=150, decay=100, sustain=365, release=400, amplitude=1024
+                ),
+                pitch_envelope=Envelope(
+                    attack=120, decay=300, sustain=0, release=100, amplitude=50
+                ),
                 amp_lfo=None,
-                pitch_lfo=LFO(frequency=10, amplitude=6)
-            )
+                pitch_lfo=LFO(frequency=10, amplitude=6),
+            ),
         ),
         Track(
             id=3,
@@ -621,12 +646,13 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=1,
                 octave=3,
-                amp_envelope=Envelope(attack=220, decay=105, sustain=1024, release=350,
-                                      amplitude=1024),
+                amp_envelope=Envelope(
+                    attack=220, decay=105, sustain=1024, release=350, amplitude=1024
+                ),
                 amp_lfo=LFO(frequency=5, amplitude=100),
                 pitch_lfo=LFO(frequency=1, amplitude=4),
-                pitch_envelope=None
-            )
+                pitch_envelope=None,
+            ),
         ),
         Track(
             id=4,
@@ -636,12 +662,13 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=16,
                 octave=4,
-                amp_envelope=Envelope(attack=5, decay=100, sustain=1024, release=30,
-                                      amplitude=1024),
+                amp_envelope=Envelope(
+                    attack=5, decay=100, sustain=1024, release=30, amplitude=1024
+                ),
                 pitch_lfo=LFO(frequency=10, amplitude=4),
                 pitch_envelope=None,
-                amp_lfo=None
-            )
+                amp_lfo=None,
+            ),
         ),
         Track(
             id=5,
@@ -651,9 +678,10 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=15,
                 octave=2,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=10,
-                                      amplitude=1024)
-            )
+                amp_envelope=Envelope(
+                    attack=10, decay=100, sustain=500, release=10, amplitude=1024
+                ),
+            ),
         ),
         Track(
             id=6,
@@ -663,9 +691,10 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=1,
                 octave=2,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
-                                      amplitude=1024)
-            )
+                amp_envelope=Envelope(
+                    attack=10, decay=100, sustain=500, release=100, amplitude=1024
+                ),
+            ),
         ),
         Track(
             id=7,
@@ -675,9 +704,10 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=2,
                 octave=3,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
-                                      amplitude=1024)
-            )
+                amp_envelope=Envelope(
+                    attack=10, decay=100, sustain=500, release=100, amplitude=1024
+                ),
+            ),
         ),
         Track(
             id=8,
@@ -687,13 +717,15 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=14,
                 octave=2,
-                amp_envelope=Envelope(attack=5, decay=70, sustain=870, release=50,
-                                      amplitude=1024),
-                pitch_envelope=Envelope(attack=10, decay=45, sustain=0, release=100,
-                                        amplitude=20),
+                amp_envelope=Envelope(
+                    attack=5, decay=70, sustain=870, release=50, amplitude=1024
+                ),
+                pitch_envelope=Envelope(
+                    attack=10, decay=45, sustain=0, release=100, amplitude=20
+                ),
                 amp_lfo=LFO(frequency=1, amplitude=50),
-                pitch_lfo=LFO(frequency=2, amplitude=1)
-            )
+                pitch_lfo=LFO(frequency=2, amplitude=1),
+            ),
         ),
         Track(
             id=9,
@@ -703,8 +735,9 @@ def get_empty_song(measures: int) -> Song:
             instrument=Instrument(
                 waveform=11,
                 octave=4,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
-                                      amplitude=1024)
+                amp_envelope=Envelope(
+                    attack=10, decay=100, sustain=500, release=100, amplitude=1024
+                ),
             ),
             drums=[
                 DrumInstrument(
@@ -712,10 +745,11 @@ def get_empty_song(measures: int) -> Song:
                     start_frequency=100,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=3, frequency=120, duration=10,
-                                      volume=1024),
+                        DrumSoundStep(
+                            waveform=3, frequency=120, duration=10, volume=1024
+                        ),
                         DrumSoundStep(waveform=3, frequency=1, duration=100, volume=0),
-                    ]
+                    ],
                 ),
                 DrumInstrument(
                     name="punchy kick",
@@ -723,7 +757,7 @@ def get_empty_song(measures: int) -> Song:
                     start_volume=1024,
                     steps=[
                         DrumSoundStep(waveform=1, frequency=0, duration=100, volume=0)
-                    ]
+                    ],
                 ),
                 DrumInstrument(
                     name="booming kick",
@@ -731,155 +765,189 @@ def get_empty_song(measures: int) -> Song:
                     start_volume=1024,
                     steps=[
                         DrumSoundStep(waveform=1, frequency=0, duration=250, volume=0)
-                    ]
+                    ],
                 ),
                 DrumInstrument(
                     name="snare 1",
                     start_frequency=175,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=1, frequency=200, duration=10,
-                                      volume=1024),
-                        DrumSoundStep(waveform=1, frequency=150, duration=20,
-                                      volume=1024),
+                        DrumSoundStep(
+                            waveform=1, frequency=200, duration=10, volume=1024
+                        ),
+                        DrumSoundStep(
+                            waveform=1, frequency=150, duration=20, volume=1024
+                        ),
                         DrumSoundStep(waveform=5, frequency=1, duration=20, volume=100),
                         DrumSoundStep(waveform=5, frequency=1, duration=300, volume=0),
-                    ]
+                    ],
                 ),
                 DrumInstrument(
                     name="snare 2",
                     start_frequency=220,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=1, frequency=250, duration=10,
-                                      volume=1024),
-                        DrumSoundStep(waveform=1, frequency=200, duration=20,
-                                      volume=1024),
-                        DrumSoundStep(waveform=5, frequency=2000, duration=20,
-                                      volume=100),
-                        DrumSoundStep(waveform=5, frequency=2000, duration=200,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=1, frequency=250, duration=10, volume=1024
+                        ),
+                        DrumSoundStep(
+                            waveform=1, frequency=200, duration=20, volume=1024
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=2000, duration=20, volume=100
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=2000, duration=200, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="hat 1",
                     start_frequency=400,
                     start_volume=500,
                     steps=[
-                        DrumSoundStep(waveform=5, frequency=450, duration=10,
-                                      volume=500),
-                        DrumSoundStep(waveform=5, frequency=400, duration=20,
-                                      volume=20),
-                    ]
+                        DrumSoundStep(
+                            waveform=5, frequency=450, duration=10, volume=500
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=400, duration=20, volume=20
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="hat 2",
                     start_frequency=400,
                     start_volume=0,
                     steps=[
-                        DrumSoundStep(waveform=5, frequency=450, duration=5,
-                                      volume=500),
+                        DrumSoundStep(
+                            waveform=5, frequency=450, duration=5, volume=500
+                        ),
                         DrumSoundStep(waveform=5, frequency=900, duration=50, volume=5),
-                        DrumSoundStep(waveform=5, frequency=900, duration=250,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=250, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="hat 3",
                     start_frequency=400,
                     start_volume=0,
                     steps=[
-                        DrumSoundStep(waveform=5, frequency=450, duration=5,
-                                      volume=500),
-                        DrumSoundStep(waveform=5, frequency=900, duration=50,
-                                      volume=200),
-                        DrumSoundStep(waveform=5, frequency=900, duration=100,
-                                      volume=5),
-                        DrumSoundStep(waveform=5, frequency=900, duration=400,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=5, frequency=450, duration=5, volume=500
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=50, volume=200
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=100, volume=5
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=400, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="hat 4",
                     start_frequency=400,
                     start_volume=0,
                     steps=[
-                        DrumSoundStep(waveform=5, frequency=450, duration=5,
-                                      volume=500),
-                        DrumSoundStep(waveform=5, frequency=900, duration=100,
-                                      volume=200),
-                        DrumSoundStep(waveform=5, frequency=900, duration=200,
-                                      volume=5),
-                        DrumSoundStep(waveform=5, frequency=900, duration=500,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=5, frequency=450, duration=5, volume=500
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=100, volume=200
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=200, volume=5
+                        ),
+                        DrumSoundStep(
+                            waveform=5, frequency=900, duration=500, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="double hat",
                     start_frequency=3500,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=4000, duration=10,
-                                      volume=0),
-                        DrumSoundStep(waveform=4, frequency=3500, duration=1,
-                                      volume=800),
-                        DrumSoundStep(waveform=4, frequency=4000, duration=40,
-                                      volume=0),
-                        DrumSoundStep(waveform=4, frequency=3500, duration=1,
-                                      volume=400),
-                        DrumSoundStep(waveform=4, frequency=4000, duration=40,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=4000, duration=10, volume=0
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=3500, duration=1, volume=800
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=4000, duration=40, volume=0
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=3500, duration=1, volume=400
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=4000, duration=40, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="metallic",
                     start_frequency=2000,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=1800, duration=100,
-                                      volume=15),
-                        DrumSoundStep(waveform=4, frequency=1800, duration=200,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=1800, duration=100, volume=15
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=1800, duration=200, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="low tom",
                     start_frequency=200,
                     start_volume=200,
                     steps=[
-                        DrumSoundStep(waveform=14, frequency=125, duration=25,
-                                      volume=200),
-                        DrumSoundStep(waveform=14, frequency=100, duration=50,
-                                      volume=15),
-                        DrumSoundStep(waveform=14, frequency=120, duration=250,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=14, frequency=125, duration=25, volume=200
+                        ),
+                        DrumSoundStep(
+                            waveform=14, frequency=100, duration=50, volume=15
+                        ),
+                        DrumSoundStep(
+                            waveform=14, frequency=120, duration=250, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="mid tom",
                     start_frequency=300,
                     start_volume=200,
                     steps=[
-                        DrumSoundStep(waveform=14, frequency=225, duration=25,
-                                      volume=200),
-                        DrumSoundStep(waveform=14, frequency=200, duration=50,
-                                      volume=15),
-                        DrumSoundStep(waveform=14, frequency=220, duration=250,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=14, frequency=225, duration=25, volume=200
+                        ),
+                        DrumSoundStep(
+                            waveform=14, frequency=200, duration=50, volume=15
+                        ),
+                        DrumSoundStep(
+                            waveform=14, frequency=220, duration=250, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="hi tom",
                     start_frequency=500,
                     start_volume=200,
                     steps=[
-                        DrumSoundStep(waveform=14, frequency=425, duration=25,
-                                      volume=200),
-                        DrumSoundStep(waveform=14, frequency=400, duration=50,
-                                      volume=15),
-                        DrumSoundStep(waveform=14, frequency=420, duration=250,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=14, frequency=425, duration=25, volume=200
+                        ),
+                        DrumSoundStep(
+                            waveform=14, frequency=400, duration=50, volume=15
+                        ),
+                        DrumSoundStep(
+                            waveform=14, frequency=420, duration=250, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="lo tom 2",
@@ -887,104 +955,120 @@ def get_empty_song(measures: int) -> Song:
                     start_volume=1024,
                     steps=[
                         DrumSoundStep(waveform=1, frequency=75, duration=200, volume=0),
-                    ]
+                    ],
                 ),
                 DrumInstrument(
                     name="mid tom 2",
                     start_frequency=300,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=1, frequency=200, duration=200,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=1, frequency=200, duration=200, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="hi tom 2",
                     start_frequency=400,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=1, frequency=300, duration=200,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=1, frequency=300, duration=200, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="thump 1",
                     start_frequency=200,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=200, duration=100,
-                                      volume=15),
-                        DrumSoundStep(waveform=4, frequency=150, duration=200,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=200, duration=100, volume=15
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=150, duration=200, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="thump 2",
                     start_frequency=450,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=350, duration=100,
-                                      volume=15),
-                        DrumSoundStep(waveform=4, frequency=300, duration=100,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=350, duration=100, volume=15
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=300, duration=100, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="cymbal",
                     start_frequency=2500,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=2500, duration=150,
-                                      volume=100),
-                        DrumSoundStep(waveform=4, frequency=2550, duration=500,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=2500, duration=150, volume=100
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=2550, duration=500, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="crash 1",
                     start_frequency=3000,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=3000, duration=300,
-                                      volume=100),
-                        DrumSoundStep(waveform=4, frequency=3060, duration=500,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=3000, duration=300, volume=100
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=3060, duration=500, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="crash 2",
                     start_frequency=800,
                     start_volume=0,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=800, duration=10,
-                                      volume=1024),
-                        DrumSoundStep(waveform=4, frequency=800, duration=490,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=800, duration=10, volume=1024
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=800, duration=490, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="crash 3",
                     start_frequency=400,
                     start_volume=0,
                     steps=[
-                        DrumSoundStep(waveform=4, frequency=400, duration=10,
-                                      volume=1024),
-                        DrumSoundStep(waveform=4, frequency=400, duration=400,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=4, frequency=400, duration=10, volume=1024
+                        ),
+                        DrumSoundStep(
+                            waveform=4, frequency=400, duration=400, volume=0
+                        ),
+                    ],
                 ),
                 DrumInstrument(
                     name="buzzer",
                     start_frequency=2000,
                     start_volume=1024,
                     steps=[
-                        DrumSoundStep(waveform=16, frequency=2000, duration=150,
-                                      volume=100),
-                        DrumSoundStep(waveform=16, frequency=2000, duration=200,
-                                      volume=0),
-                    ]
+                        DrumSoundStep(
+                            waveform=16, frequency=2000, duration=150, volume=100
+                        ),
+                        DrumSoundStep(
+                            waveform=16, frequency=2000, duration=200, volume=0
+                        ),
+                    ],
                 ),
-            ]
+            ],
         ),
     ]
 
@@ -993,5 +1077,5 @@ def get_empty_song(measures: int) -> Song:
         beats_per_measure=4,
         beats_per_minute=120,
         ticks_per_beat=8,
-        tracks=tracks
+        tracks=tracks,
     )

@@ -1,12 +1,16 @@
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, Optional
 
 from yaml import safe_load
 
-from midi2mkcd.arcade.music_types import DrumInstrument, DrumSoundStep, Envelope, \
-    Instrument, LFO
+from midi2mkcd.arcade.music_types import (
+    LFO,
+    DrumInstrument,
+    DrumSoundStep,
+    Envelope,
+    Instrument,
+)
 from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
 from midi2mkcd.utils.logger import create_logger
 
@@ -21,9 +25,9 @@ class InstrumentParameterMapping:
     # reduced, pitches below are boosted. Set to 0 to disable.
     melodic_pitch_comp_k: float
     # The integer is the general MIDI instrument
-    melodic_instruments: Dict[int, Instrument]
+    melodic_instruments: dict[int, Instrument]
     # The integer is the MIDI drum kit note
-    drum_instruments: Dict[int, DrumInstrument]
+    drum_instruments: dict[int, DrumInstrument]
 
 
 class WaveForm(IntEnum):
@@ -71,9 +75,9 @@ def waveform_from_str(w: str) -> WaveForm:
     }[w]
 
 
-def load_instrument_params(yaml_text: str,
-                           testing_opts: Optional[
-                               TestingOptionsForLoadInstrumentParams] = None) -> InstrumentParameterMapping:
+def load_instrument_params(
+    yaml_text: str, testing_opts: TestingOptionsForLoadInstrumentParams | None = None
+) -> InstrumentParameterMapping:
     """
     Take a YAML file specifying instrument data and return an instrument parameter
     mapping. For melodic instruments, the octave has been set to 0, duplicate as
@@ -83,19 +87,23 @@ def load_instrument_params(yaml_text: str,
     :param testing_opts: Extra options used for testing, passed from the CLI.
     :return: An `InstrumentParameterMapping` object.
     """
-    logger.debug(f"Loading instrument parameters from {len(yaml_text)} characters of "
-                 f"YAML text")
+    logger.debug(
+        f"Loading instrument parameters from {len(yaml_text)} characters of YAML text"
+    )
     data = safe_load(yaml_text)
 
-    melodic_pitch_comp_k = data[
-        "melodic_pitch_comp_k"] if "melodic_pitch_comp_k" in data else 0
+    melodic_pitch_comp_k = data.get("melodic_pitch_comp_k", 0)
     logger.debug(f"{melodic_pitch_comp_k=}")
 
-    mapping = InstrumentParameterMapping(melodic_pitch_comp_k=melodic_pitch_comp_k,
-                                         melodic_instruments={}, drum_instruments={})
+    mapping = InstrumentParameterMapping(
+        melodic_pitch_comp_k=melodic_pitch_comp_k,
+        melodic_instruments={},
+        drum_instruments={},
+    )
 
-    logger.debug(f"Creating mappings for {len(data["melodic_instruments"])} melodic "
-                 f"instruments")
+    logger.debug(
+        f"Creating mappings for {len(data['melodic_instruments'])} melodic instruments"
+    )
     for instr in data["melodic_instruments"]:
         try:
             # TODO: If pitch envelope or LFOs aren't defined in the YAML don't error out
@@ -125,17 +133,18 @@ def load_instrument_params(yaml_text: str,
                 pitch_lfo=LFO(
                     frequency=instr["pitch_lfo"]["frequency"],
                     amplitude=instr["pitch_lfo"]["amplitude"],
-                )
+                ),
             )
-        except Exception as e:
+        except Exception:
             if not testing_opts.force_load:
-                raise e
+                raise
             # else:
             #     logger.warning(f"Error loading melodic instrument "
             #                    f"{instr['instrument']}: {e}. Skipping.")
 
-    logger.debug(f"Creating mappings for {len(data["drum_instruments"])} drum "
-                 f"instruments")
+    logger.debug(
+        f"Creating mappings for {len(data['drum_instruments'])} drum instruments"
+    )
     for sample in data["drum_instruments"]:
         try:
             mapping.drum_instruments[sample["note"]] = DrumInstrument(
@@ -148,11 +157,12 @@ def load_instrument_params(yaml_text: str,
                         frequency=step["target_freq"],
                         volume=step["target_vol"],
                         duration=step["duration"],
-                    ) for step in sample["steps"]
-                ]
+                    )
+                    for step in sample["steps"]
+                ],
             )
-        except Exception as e:
+        except Exception:
             if not testing_opts.force_load:
-                raise e
+                raise
 
     return mapping

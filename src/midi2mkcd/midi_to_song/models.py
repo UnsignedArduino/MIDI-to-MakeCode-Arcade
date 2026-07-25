@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List, Optional
 
 from mido import Message
 
@@ -27,7 +26,9 @@ class AbsoluteTickMessage:
 class AbsoluteTimeMessage:
     time: float  # absolute time in seconds
     port: int
-    msg: Message  # note_on, note_off, program_change, control_change (where control = 0)
+    msg: (
+        Message  # note_on, note_off, program_change, control_change (where control = 0)
+    )
 
 
 @dataclass
@@ -83,7 +84,7 @@ class AbsoluteCompleteChordWithTick:
     start_tick: int
     end_tick: int
 
-    notes: List[int]
+    notes: list[int]
     velocity: int
 
     instrument: int
@@ -92,11 +93,11 @@ class AbsoluteCompleteChordWithTick:
 
 @dataclass
 class TestingOptionsForLoadInstrumentParams:
-    force_load: Optional[bool] = False
+    force_load: bool | None = False
 
 
 @dataclass
 class TestingOptionsForMIDIToSong:
-    replace_all_melodics_with: Optional[int] = None
-    replace_all_drums_with: Optional[int] = None
-    generate_code: Optional[bool] = False
+    replace_all_melodics_with: int | None = None
+    replace_all_drums_with: int | None = None
+    generate_code: bool | None = False

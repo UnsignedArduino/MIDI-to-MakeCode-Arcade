@@ -1,17 +1,21 @@
 import logging
-from typing import Dict, List, Tuple
 
 from mido import MidiFile, tick2second
 
-from midi2mkcd.midi_to_song.models import AbsoluteCompleteNote, \
-    AbsoluteTickMessage, AbsoluteTimeMessage, \
-    AbsoluteTimeMessageWithInstrument, ChannelState, DrumDeterminationSource
+from midi2mkcd.midi_to_song.models import (
+    AbsoluteCompleteNote,
+    AbsoluteTickMessage,
+    AbsoluteTimeMessage,
+    AbsoluteTimeMessageWithInstrument,
+    ChannelState,
+    DrumDeterminationSource,
+)
 from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
-def timeline_build(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
+def timeline_build(midi_song: MidiFile) -> list[AbsoluteTimeMessage]:
     """
     Look through all tracks and convert MIDI's delta tick time to absolute time in
     seconds while keeping track of tempo and port changes.
@@ -33,21 +37,23 @@ def timeline_build(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
     # We need to do this in passes because some messages are globally effective while
     # some others are restricted to a track only
     logger.debug("Convert relative ticks to absolute ticks and sort")
-    all_msgs_with_abs_ticks: List[AbsoluteTickMessage] = []
+    all_msgs_with_abs_ticks: list[AbsoluteTickMessage] = []
     for i, track in enumerate(midi_song.tracks):
         abs_tick = 0
         for j, msg in enumerate(track):
             abs_tick += msg.time
             all_msgs_with_abs_ticks.append(
-                AbsoluteTickMessage(tick=abs_tick, track=i, msg=msg, msg_idx=j))
+                AbsoluteTickMessage(tick=abs_tick, track=i, msg=msg, msg_idx=j)
+            )
     # Update the sort, time first, then track, then order within the track
     all_msgs_with_abs_ticks.sort(key=lambda m: (m.tick, m.track, m.msg_idx))
 
     # Now we can convert absolute ticks to absolute time, but we need to keep track of
     # tempo changes and MIDI port changes as well (they are also chronological)
-    logger.debug("Convert absolute ticks to absolute time and track tempo and port "
-                 "changes")
-    global_timeline: List[AbsoluteTimeMessage] = []
+    logger.debug(
+        "Convert absolute ticks to absolute time and track tempo and port changes"
+    )
+    global_timeline: list[AbsoluteTimeMessage] = []
     ticks_per_beat = midi_song.ticks_per_beat
     msgs_skipped = 0
 
@@ -86,20 +92,26 @@ def timeline_build(midi_song: MidiFile) -> List[AbsoluteTimeMessage]:
         # Keep note on/off, program change, sysex, and control change (only if control
         # is 0 or 32 which is the bank select MSB/LSB)
         elif msg.type in ("note_on", "note_off", "program_change", "sysex") or (
-                msg.type == "control_change" and msg.control in (0, 32)):
+            msg.type == "control_change" and msg.control in (0, 32)
+        ):
             global_timeline.append(
-                AbsoluteTimeMessage(time=current_abs_time, port=track_ports[track_idx],
-                                    msg=msg))
+                AbsoluteTimeMessage(
+                    time=current_abs_time, port=track_ports[track_idx], msg=msg
+                )
+            )
         else:
             msgs_skipped += 1
-    logger.debug(f"Global timeline has {len(global_timeline)} messages (skipped "
-                 f"{msgs_skipped}), total song length of {global_timeline[-1].time}s")
+    logger.debug(
+        f"Global timeline has {len(global_timeline)} messages (skipped "
+        f"{msgs_skipped}), total song length of {global_timeline[-1].time}s"
+    )
 
     return global_timeline
 
 
-def timeline_find_instrument_data(timeline: List[AbsoluteTimeMessage]) -> List[
-    AbsoluteTimeMessageWithInstrument]:
+def timeline_find_instrument_data(
+    timeline: list[AbsoluteTimeMessage],
+) -> list[AbsoluteTimeMessageWithInstrument]:
     """
     Parse the timeline for program_change and control_change (control = 0) messages to
     determine what instrument each message has.
@@ -119,15 +131,17 @@ def timeline_find_instrument_data(timeline: List[AbsoluteTimeMessage]) -> List[
     for port in range(highest_port + 1):
         for channel in range(16):
             # By default, channel 10 starts as drum
-            channel_states[(port, channel)] = ChannelState(program=0,
-                                                           bank_select_msb=0,
-                                                           bank_select_lsb=0,
-                                                           is_drum=channel == 9,
-                                                           drum_determined_by=DrumDeterminationSource.DEFAULT)
+            channel_states[(port, channel)] = ChannelState(
+                program=0,
+                bank_select_msb=0,
+                bank_select_lsb=0,
+                is_drum=channel == 9,
+                drum_determined_by=DrumDeterminationSource.DEFAULT,
+            )
 
     # Now search through the timeline and apply control_change (control = 0) and
     # program_change messages to the channel states
-    timeline_with_instrument: List[AbsoluteTimeMessageWithInstrument] = []
+    timeline_with_instrument: list[AbsoluteTimeMessageWithInstrument] = []
 
     instr_msgs_processed = 0
     sysex_msgs_processed = 0
@@ -143,17 +157,18 @@ def timeline_find_instrument_data(timeline: List[AbsoluteTimeMessage]) -> List[
             elif msg.control == 32:
                 channel_states[(port, channel)].bank_select_lsb = msg.value
             is_drum_bank = (
-                    channel_states[(port, channel)].bank_select_msb in (120, 121,
-                                                                        126,
-                                                                        127) or
-                    channel == 9
+                channel_states[(port, channel)].bank_select_msb in (120, 121, 126, 127)
+                or channel == 9
             )
             # Only override if last drum determination was weaker than CC
-            if DrumDeterminationSource.CC >= channel_states[
-                (port, channel)].drum_determined_by:
+            if (
+                DrumDeterminationSource.CC
+                >= channel_states[(port, channel)].drum_determined_by
+            ):
                 channel_states[(port, channel)].is_drum = is_drum_bank
                 channel_states[
-                    (port, channel)].drum_determined_by = DrumDeterminationSource.CC
+                    (port, channel)
+                ].drum_determined_by = DrumDeterminationSource.CC
             instr_msgs_processed += 1
         elif msg.type == "program_change":
             channel_states[(port, channel)].program = msg.program
@@ -161,15 +176,17 @@ def timeline_find_instrument_data(timeline: List[AbsoluteTimeMessage]) -> List[
         elif msg.type == "sysex":
             data = msg.data
             # check for Roland GS
-            if (len(data) >= 8 and
-                    data[0] == 0x41 and  # Roland ID
-                    data[1] == 0x10 and  # device ID
-                    data[2] == 0x42 and  # GS standard layouts
-                    data[3] == 0x12 and
-                    data[4] == 0x40 and  # parameter 1
-                    0x10 <= data[5] <= 0x1F and  # 0x1n, channel byte, see below
-                    data[6] == 0x15 and  # part address
-                    data[7] in (0, 1, 2)):  # map byte
+            if (
+                len(data) >= 8
+                and data[0] == 0x41  # Roland ID
+                and data[1] == 0x10  # device ID
+                and data[2] == 0x42  # GS standard layouts
+                and data[3] == 0x12
+                and data[4] == 0x40  # parameter 1
+                and 0x10 <= data[5] <= 0x1F  # 0x1n, channel byte, see below
+                and data[6] == 0x15  # part address
+                and data[7] in (0, 1, 2)
+            ):  # map byte
                 # 0x1n is the channel byte, where:
                 #   n=0 is channel 9 (midi channel 10)
                 #   n=1 through 9 is channels 0 through 8
@@ -185,53 +202,64 @@ def timeline_find_instrument_data(timeline: List[AbsoluteTimeMessage]) -> List[
                 channel = gs_byte_to_channel(data[5])
                 is_drum = data[7] in (1, 2)
                 # Only override if last drum determination was weaker than sysex
-                if DrumDeterminationSource.SYSEX >= channel_states[
-                    (port, channel)].drum_determined_by:
+                if (
+                    DrumDeterminationSource.SYSEX
+                    >= channel_states[(port, channel)].drum_determined_by
+                ):
                     channel_states[(port, channel)].is_drum = is_drum
                     channel_states[
-                        (port,
-                         channel)].drum_determined_by = DrumDeterminationSource.SYSEX
+                        (port, channel)
+                    ].drum_determined_by = DrumDeterminationSource.SYSEX
                 # print(f"Roland GS channel {channel} drum: {is_drum}")
                 instr_msgs_processed += 1
                 sysex_msgs_processed += 1
             # check for Yamaha XG
-            elif (len(data) >= 7 and
-                  data[0] == 0x43 and  # Yamaha ID
-                  data[1] == 0x10 and  # device ID
-                  data[2] == 0x4C and  # XG model ID
-                  data[3] == 0x08 and  # multi part params
-                  0x00 <= data[4] <= 0x0F and  # channel, direct mapping
-                  data[5] == 0x07 and  # part address
-                  data[6] >= 0):  # map byte, technically redundant but
+            elif (
+                len(data) >= 7
+                and data[0] == 0x43  # Yamaha ID
+                and data[1] == 0x10  # device ID
+                and data[2] == 0x4C  # XG model ID
+                and data[3] == 0x08  # multi part params
+                and 0x00 <= data[4] <= 0x0F  # channel, direct mapping
+                and data[5] == 0x07  # part address
+                and data[6] >= 0
+            ):  # map byte, technically redundant but
                 channel = data[4]
                 is_drum = data[6] > 0
                 # Only override if last drum determination was weaker than sysex
-                if DrumDeterminationSource.SYSEX >= channel_states[
-                    (port, channel)].drum_determined_by:
+                if (
+                    DrumDeterminationSource.SYSEX
+                    >= channel_states[(port, channel)].drum_determined_by
+                ):
                     channel_states[(port, channel)].is_drum = is_drum
                     channel_states[
-                        (port,
-                         channel)].drum_determined_by = DrumDeterminationSource.SYSEX
+                        (port, channel)
+                    ].drum_determined_by = DrumDeterminationSource.SYSEX
                 # print(f"Yamaha XG channel {channel} drum: {is_drum}")
                 instr_msgs_processed += 1
                 sysex_msgs_processed += 1
         elif msg.type in ("note_on", "note_off"):
-            timeline_with_instrument.append(AbsoluteTimeMessageWithInstrument(
-                time=item.time,
-                port=item.port,
-                instrument=channel_states[(port, channel)].program,
-                is_drum=channel_states[(port, channel)].is_drum,
-                msg=msg
-            ))
-    logger.debug(f"Global timeline has {len(timeline_with_instrument)} note messages ("
-                 f"processed {instr_msgs_processed} instrument messages, "
-                 f"{sysex_msgs_processed} of which were recognized SysEx messages)")
+            timeline_with_instrument.append(
+                AbsoluteTimeMessageWithInstrument(
+                    time=item.time,
+                    port=item.port,
+                    instrument=channel_states[(port, channel)].program,
+                    is_drum=channel_states[(port, channel)].is_drum,
+                    msg=msg,
+                )
+            )
+    logger.debug(
+        f"Global timeline has {len(timeline_with_instrument)} note messages ("
+        f"processed {instr_msgs_processed} instrument messages, "
+        f"{sysex_msgs_processed} of which were recognized SysEx messages)"
+    )
 
     return timeline_with_instrument
 
 
-def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -> List[
-    AbsoluteCompleteNote]:
+def timeline_group_messages(
+    timeline: list[AbsoluteTimeMessageWithInstrument],
+) -> list[AbsoluteCompleteNote]:
     """
     Parse the timeline for note_on and note_off messages to determine the start and end
     times of each note.
@@ -245,10 +273,8 @@ def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -
 
     timeline_with_complete_notes = []
     highest_port = max([0] + [m.port for m in timeline])
-    active_notes: Dict[Tuple[int, int], List[AbsoluteCompleteNote]] = {
-        (port, channel): []
-        for port in range(highest_port + 1)
-        for channel in range(16)
+    active_notes: dict[tuple[int, int], list[AbsoluteCompleteNote]] = {
+        (port, channel): [] for port in range(highest_port + 1) for channel in range(16)
     }
     last_time = 0
 
@@ -288,8 +314,8 @@ def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -
 
     # handle hanging notes
     hanging_count = 0
-    for group_key in active_notes:
-        for playing_note in active_notes[group_key]:
+    for group in active_notes.values():
+        for playing_note in group:
             playing_note.end_time = last_time
             timeline_with_complete_notes.append(playing_note)
             hanging_count += 1
@@ -298,8 +324,10 @@ def timeline_group_messages(timeline: List[AbsoluteTimeMessageWithInstrument]) -
     # sort by start instead of when they ended
     timeline_with_complete_notes.sort(key=lambda m: m.start_time)
 
-    logger.debug(f"Global timeline has {len(timeline_with_complete_notes)} note events "
-                 f"(maximum polyphony across all channels and ports was {max_poly} "
-                 f"notes and had to clean up {hanging_count} hanging notes)")
+    logger.debug(
+        f"Global timeline has {len(timeline_with_complete_notes)} note events "
+        f"(maximum polyphony across all channels and ports was {max_poly} "
+        f"notes and had to clean up {hanging_count} hanging notes)"
+    )
 
     return timeline_with_complete_notes

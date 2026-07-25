@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
 
 from midi2mkcd.utils.logger import create_logger
 
@@ -90,9 +89,9 @@ class Instrument:
     waveform: int
     octave: int
     amp_envelope: Envelope
-    pitch_envelope: Optional[Envelope] = None
-    amp_lfo: Optional[LFO] = None
-    pitch_lfo: Optional[LFO] = None
+    pitch_envelope: Envelope | None = None
+    amp_lfo: LFO | None = None
+    pitch_lfo: LFO | None = None
 
 
 @dataclass
@@ -120,25 +119,25 @@ class SongInfo:
 
 @dataclass
 class Song(SongInfo):
-    tracks: List[Track]
+    tracks: list[Track]
 
 
 @dataclass
 class Track:
     id: int
     instrument: Instrument
-    notes: List[NoteEvent]
-    drums: Optional[List[DrumInstrument]] = None
-    name: Optional[str] = None
-    icon_uri: Optional[str] = None
+    notes: list[NoteEvent]
+    drums: list[DrumInstrument] | None = None
+    name: str | None = None
+    icon_uri: str | None = None
 
 
 @dataclass
 class NoteEvent:
-    notes: List[Note]
+    notes: list[Note]
     start_tick: int
     end_tick: int
-    velocity: Optional[int] = None
+    velocity: int | None = None
 
 
 class EnharmonicSpelling(Enum):
@@ -165,5 +164,5 @@ class DrumSoundStep:
 class DrumInstrument:
     start_frequency: int
     start_volume: int
-    steps: List[DrumSoundStep]
-    name: Optional[str] = None
+    steps: list[DrumSoundStep]
+    name: str | None = None

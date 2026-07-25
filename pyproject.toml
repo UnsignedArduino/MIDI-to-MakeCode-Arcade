@@ -24,3 +24,19 @@ optional = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/midi2mkcd"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pre-commit>=4.6.1",
+    "ruff>=0.16.0",
+    "types-pyperclip>=1.11.0.20260508",
+    "types-pyyaml>=6.0.12.20260724",
+]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true

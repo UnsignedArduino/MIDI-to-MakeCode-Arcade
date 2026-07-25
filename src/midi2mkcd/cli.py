@@ -1,22 +1,24 @@
 import logging
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import List, Tuple
 
 from mido import MidiFile
 
 from midi2mkcd.arcade.music import encode_song_to_hex
-from midi2mkcd.midi_to_song import InstrumentParameterMapping, \
-    TestingOptionsForMIDIToSong, convert_midi_to_song
+from midi2mkcd.midi_to_song import (
+    InstrumentParameterMapping,
+    TestingOptionsForMIDIToSong,
+    convert_midi_to_song,
+)
 from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
 from midi2mkcd.utils.logger import create_logger
 from midi2mkcd.utils.strings import parse_range
 
 try:
-    import pyperclip
+    import pyperclip  # noqa: F401
 
     CLIPBOARD_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
+except ImportError, ModuleNotFoundError:
     CLIPBOARD_AVAILABLE = False
 
 logger = create_logger(name=__name__, level=logging.INFO)
@@ -29,73 +31,110 @@ def generate_and_parse_args() -> Namespace:
     :return: A `Namespace` object with parsed CLI arguments.
     """
     parser = ArgumentParser(
-        description="Convert a MIDI file to a MakeCode Arcade song.")
-    parser.add_argument("--input", "-i", type=Path, required=True,
-                        help="Input MIDI file.")
-    parser.add_argument("--input-instrument-params", "-p", type=Path,
-                        required=True, help="Input instrument parameter mapping file.")
-    parser.add_argument("--output", "-o", type=Path,
-                        help="Output TypeScript file path, otherwise will write to "
-                             "stdout. If specified, this will overwrite the file if it "
-                             "already exists, and the parent directories must exist.")
-    parser.add_argument("--generate-extra-code", action="store_true",
-                        help="Generate extra code to help song visualizers display "
-                             "properly. The output will be valid TypeScript code. "
-                             "Incompatible with test options that sample melodic "
-                             "instruments.")
-    parser.add_argument("--debug", action="store_const",
-                        const=logging.DEBUG, default=logging.INFO,
-                        help="Include debug messages. Defaults to info and greater "
-                             "severity messages only.")
+        description="Convert a MIDI file to a MakeCode Arcade song."
+    )
+    parser.add_argument(
+        "--input", "-i", type=Path, required=True, help="Input MIDI file."
+    )
+    parser.add_argument(
+        "--input-instrument-params",
+        "-p",
+        type=Path,
+        required=True,
+        help="Input instrument parameter mapping file.",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        help="Output TypeScript file path, otherwise will write to "
+        "stdout. If specified, this will overwrite the file if it "
+        "already exists, and the parent directories must exist.",
+    )
+    parser.add_argument(
+        "--generate-extra-code",
+        action="store_true",
+        help="Generate extra code to help song visualizers display "
+        "properly. The output will be valid TypeScript code. "
+        "Incompatible with test options that sample melodic "
+        "instruments.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_const",
+        const=logging.DEBUG,
+        default=logging.INFO,
+        help="Include debug messages. Defaults to info and greater "
+        "severity messages only.",
+    )
 
     testing_group = parser.add_argument_group("Testing options")
     # Melodic instrument tests
-    testing_group.add_argument("--test-replace-all-melodics-with", type=int,
-                               default=None,
-                               help="Replace all melodic tracks in a song with the "
-                                    "specific MIDI instrument.")
-    testing_group.add_argument("--test-ask-to-replace-all-melodics-with",
-                               action="store_true",
-                               help="Prompt the user to replace all melodic tracks in "
-                                    "a song with a specific MIDI instrument.")
-    testing_group.add_argument("--test-sample-melodic-instruments",
-                               type=parse_range,
-                               help="Pass in a range of MIDI instruments to sample, "
-                                    "such as \"0,2,4-10\" to replicate the song "
-                                    "several times and replace all melodic tracks in "
-                                    "the song with the specific MIDI instrument. "
-                                    "Basically does what "
-                                    "`--test-replace-all-melodics-with` and "
-                                    "`--test-generate-code` but with a bunch of "
-                                    "specified instruments.")
+    testing_group.add_argument(
+        "--test-replace-all-melodics-with",
+        type=int,
+        default=None,
+        help="Replace all melodic tracks in a song with the specific MIDI instrument.",
+    )
+    testing_group.add_argument(
+        "--test-ask-to-replace-all-melodics-with",
+        action="store_true",
+        help="Prompt the user to replace all melodic tracks in "
+        "a song with a specific MIDI instrument.",
+    )
+    testing_group.add_argument(
+        "--test-sample-melodic-instruments",
+        type=parse_range,
+        help="Pass in a range of MIDI instruments to sample, "
+        'such as "0,2,4-10" to replicate the song '
+        "several times and replace all melodic tracks in "
+        "the song with the specific MIDI instrument. "
+        "Basically does what "
+        "`--test-replace-all-melodics-with` and "
+        "`--test-generate-code` but with a bunch of "
+        "specified instruments.",
+    )
     # Drum note tests
-    testing_group.add_argument("--test-replace-all-drums-with", type=int,
-                               default=None,
-                               help="Replace all drum notes in a song with the "
-                                    "specific drum note.")
-    testing_group.add_argument("--test-ask-to-replace-all-drums-with",
-                               action="store_true",
-                               help="Prompt the user to replace all drum notes in "
-                                    "a song with a specific drum note.")
+    testing_group.add_argument(
+        "--test-replace-all-drums-with",
+        type=int,
+        default=None,
+        help="Replace all drum notes in a song with the specific drum note.",
+    )
+    testing_group.add_argument(
+        "--test-ask-to-replace-all-drums-with",
+        action="store_true",
+        help="Prompt the user to replace all drum notes in "
+        "a song with a specific drum note.",
+    )
     # Misc
-    testing_group.add_argument("--test-generate-code", action="store_true",
-                               help="Generate the MakeCode Arcade code to play the song.")
-    testing_group.add_argument("--test-force-instrument-param-load",
-                               action="store_true",
-                               help="Forcibly load the instrument parameter mapping "
-                                    "file, even if it would normally cause errors.")
-    testing_group.add_argument("--test-copy-result-to-clipboard", action="store_true",
-                               help="If pyperclip (uv pip install pyperclip) is "
-                                    "available and this option is specified, the "
-                                    "output will also be copied to the clipboard.")
+    testing_group.add_argument(
+        "--test-generate-code",
+        action="store_true",
+        help="Generate the MakeCode Arcade code to play the song.",
+    )
+    testing_group.add_argument(
+        "--test-force-instrument-param-load",
+        action="store_true",
+        help="Forcibly load the instrument parameter mapping "
+        "file, even if it would normally cause errors.",
+    )
+    testing_group.add_argument(
+        "--test-copy-result-to-clipboard",
+        action="store_true",
+        help="If pyperclip (uv pip install pyperclip) is "
+        "available and this option is specified, the "
+        "output will also be copied to the clipboard.",
+    )
 
     args = parser.parse_args()
     logger.debug(f"Received arguments: {args}")
     return args
 
 
-def generate_testing_options(args: Namespace) -> Tuple[
-    TestingOptionsForLoadInstrumentParams, TestingOptionsForMIDIToSong]:
+def generate_testing_options(
+    args: Namespace,
+) -> tuple[TestingOptionsForLoadInstrumentParams, TestingOptionsForMIDIToSong]:
     """
     Take CLI arguments and generate the testing options objects for both loading
     instrument parameters and MIDI song generation.
@@ -116,26 +155,33 @@ def generate_testing_options(args: Namespace) -> Tuple[
     # Do any user prompting as necessary
     if args.test_ask_to_replace_all_melodics_with:
         TOs_midi_to_song.replace_all_melodics_with = int(
-            input("Replace all melodics with MIDI instrument: "))
+            input("Replace all melodics with MIDI instrument: ")
+        )
     if args.test_ask_to_replace_all_drums_with:
         TOs_midi_to_song.replace_all_drums_with = int(
-            input("Replace all drums with MIDI drum note: "))
+            input("Replace all drums with MIDI drum note: ")
+        )
     # Logging
     if TOs_midi_to_song.replace_all_melodics_with is not None:
-        logger.info(f"Replacing all melodic instruments with MIDI instrument "
-                    f"{TOs_midi_to_song.replace_all_melodics_with} in final output")
+        logger.info(
+            f"Replacing all melodic instruments with MIDI instrument "
+            f"{TOs_midi_to_song.replace_all_melodics_with} in final output"
+        )
     if TOs_midi_to_song.generate_code:
         logger.info(
-            f"Final result will be valid MakeCode Arcade TypeScript code to play "
-            f"the song")
+            "Final result will be valid MakeCode Arcade TypeScript code to play "
+            "the song"
+        )
 
     return TOs_load_instrument_params, TOs_midi_to_song
 
 
-def generate_single_conversion(midi: MidiFile,
-                               mapping: InstrumentParameterMapping,
-                               generate_extra_code: bool,
-                               testing_opts_for_midi_to_song: TestingOptionsForMIDIToSong) -> str:
+def generate_single_conversion(
+    midi: MidiFile,
+    mapping: InstrumentParameterMapping,
+    generate_extra_code: bool,
+    testing_opts_for_midi_to_song: TestingOptionsForMIDIToSong,
+) -> str:
     """
     Single conversion from a MIDI file with an instrument parameter mapping to the
     final output to be printed or written to a file, follwing the provided testing
@@ -149,10 +195,9 @@ def generate_single_conversion(midi: MidiFile,
     :return: The final output.
     """
     logger.info("Generating single conversion")
-    (song,
-     drum_note_list,
-     track_instrument_list) = convert_midi_to_song(midi, mapping,
-                                                   testing_opts_for_midi_to_song)
+    (song, drum_note_list, track_instrument_list) = convert_midi_to_song(
+        midi, mapping, testing_opts_for_midi_to_song
+    )
     h = encode_song_to_hex(song)
     final_output = f"hex`{h}`"
     logger.info("Finished converting MIDI file")
@@ -176,19 +221,26 @@ const trackInstrumentMap: number[] = {track_instrument_list};
         final_output = f"""// drums replaced with MIDI drum note {testing_opts_for_midi_to_song.replace_all_drums_with}
 {final_output}"""
 
-    if any((testing_opts_for_midi_to_song.generate_code, generate_extra_code,
+    if any(
+        (
+            testing_opts_for_midi_to_song.generate_code,
+            generate_extra_code,
             testing_opts_for_midi_to_song.replace_all_melodics_with,
-            testing_opts_for_midi_to_song.replace_all_drums_with)):
+            testing_opts_for_midi_to_song.replace_all_drums_with,
+        )
+    ):
         final_output = f"""// Generated by https://github.com/UnsignedArduino/MIDI-to-MakeCode-Arcade
 {final_output}"""
 
     return final_output
 
 
-def generate_melodic_instrument_sample(midi: MidiFile,
-                                       mapping: InstrumentParameterMapping,
-                                       testing_opts_for_midi_to_song: TestingOptionsForMIDIToSong,
-                                       melodics_to_sample: List[int]) -> str:
+def generate_melodic_instrument_sample(
+    midi: MidiFile,
+    mapping: InstrumentParameterMapping,
+    testing_opts_for_midi_to_song: TestingOptionsForMIDIToSong,
+    melodics_to_sample: list[int],
+) -> str:
     """
     Multiple conversions from a MIDI file, overriding all melodic instruments with the
     specified instrument and generating the code. Then repeated for every MIDI melodic

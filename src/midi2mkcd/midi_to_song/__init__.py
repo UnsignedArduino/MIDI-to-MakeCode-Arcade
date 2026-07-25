@@ -1,38 +1,52 @@
 import logging
 from copy import deepcopy
 from math import ceil
-from typing import Dict, List, Optional, Tuple
 
 from mido import MidiFile
 
-from midi2mkcd.arcade.music_types import EnharmonicSpelling, Envelope, Instrument, Note, \
-    NoteEvent, Song, Track
+from midi2mkcd.arcade.music_types import (
+    EnharmonicSpelling,
+    Envelope,
+    Instrument,
+    Note,
+    NoteEvent,
+    Song,
+    Track,
+)
 from midi2mkcd.midi_to_song.instruments import InstrumentParameterMapping
-from midi2mkcd.midi_to_song.models import AbsoluteCompleteChordWithTick, \
-    AbsoluteCompleteNote, \
-    AbsoluteCompleteNoteWithTick, AbsoluteTickMessage, AbsoluteTimeMessage, \
-    AbsoluteTimeMessageWithInstrument, ChannelState, DrumDeterminationSource, \
-    TestingOptionsForMIDIToSong
-from midi2mkcd.midi_to_song.timeline.parser import timeline_build, \
-    timeline_find_instrument_data, \
-    timeline_group_messages
-from midi2mkcd.midi_to_song.timeline.processor import find_all_drum_chords_used, \
-    timeline_apply_pitch_compensation, timeline_fix_gate_lens, \
-    timeline_group_by_instrument, \
-    timeline_group_into_perfect_chords, \
-    timeline_quantize_to_song_ticks, timeline_resolve_overlapping_chords, \
-    timeline_split_tracks_for_ranges
+from midi2mkcd.midi_to_song.models import (
+    AbsoluteCompleteChordWithTick,
+    AbsoluteCompleteNote,
+    AbsoluteCompleteNoteWithTick,
+    AbsoluteTimeMessage,
+    AbsoluteTimeMessageWithInstrument,
+    TestingOptionsForMIDIToSong,
+)
+from midi2mkcd.midi_to_song.timeline.parser import (
+    timeline_build,
+    timeline_find_instrument_data,
+    timeline_group_messages,
+)
+from midi2mkcd.midi_to_song.timeline.processor import (
+    find_all_drum_chords_used,
+    timeline_apply_pitch_compensation,
+    timeline_fix_gate_lens,
+    timeline_group_by_instrument,
+    timeline_group_into_perfect_chords,
+    timeline_quantize_to_song_ticks,
+    timeline_split_tracks_for_ranges,
+)
 from midi2mkcd.midi_to_song.timeline.validation import timeline_checks
 from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
-def convert_midi_to_song(midi_song: MidiFile,
-                         mapping: InstrumentParameterMapping,
-                         testing_opts: Optional[
-                             TestingOptionsForMIDIToSong] = None
-                         ) -> Tuple[Song, List[int], List[int]]:
+def convert_midi_to_song(
+    midi_song: MidiFile,
+    mapping: InstrumentParameterMapping,
+    testing_opts: TestingOptionsForMIDIToSong | None = None,
+) -> tuple[Song, list[int], list[int]]:
     """
     Convert a MIDI file into a MakeCode Arcade song.
 
@@ -55,27 +69,32 @@ def convert_midi_to_song(midi_song: MidiFile,
         beats_per_measure=4,
         beats_per_minute=120,  # beat every 1/2 seconds
         ticks_per_beat=24,  # each tick is 1/48 seconds long
-        tracks=[]
+        tracks=[],
     )
 
     logger.debug("Resolving timeline")
 
-    global_timeline: List[AbsoluteTimeMessage] = timeline_build(midi_song)
-    global_timeline: List[
-        AbsoluteTimeMessageWithInstrument] = timeline_find_instrument_data(
-        global_timeline)
-    global_timeline: List[AbsoluteCompleteNote] = timeline_group_messages(
-        global_timeline)
+    global_timeline: list[AbsoluteTimeMessage] = timeline_build(midi_song)
+    global_timeline: list[AbsoluteTimeMessageWithInstrument] = (
+        timeline_find_instrument_data(global_timeline)
+    )
+    global_timeline: list[AbsoluteCompleteNote] = timeline_group_messages(
+        global_timeline
+    )
 
     if testing_opts.replace_all_melodics_with is not None:
-        logger.debug(f"Testing option enabled to replace all melodic instruments with "
-                     f"MIDI instrument {testing_opts.replace_all_melodics_with}")
+        logger.debug(
+            f"Testing option enabled to replace all melodic instruments with "
+            f"MIDI instrument {testing_opts.replace_all_melodics_with}"
+        )
         for m in global_timeline:
             if not m.is_drum:
                 m.instrument = testing_opts.replace_all_melodics_with
     if testing_opts.replace_all_drums_with is not None:
-        logger.debug(f"Testing option enabled to replace all drum notes with MIDI drum "
-                     f"note {testing_opts.replace_all_drums_with}")
+        logger.debug(
+            f"Testing option enabled to replace all drum notes with MIDI drum "
+            f"note {testing_opts.replace_all_drums_with}"
+        )
         for m in global_timeline:
             if m.is_drum:
                 m.note = testing_opts.replace_all_drums_with
@@ -90,19 +109,20 @@ def convert_midi_to_song(midi_song: MidiFile,
             note.note -= 11  # MIDI 60 (C4) maps to Arcade's C4 of 49
             note.note -= 12  # another octave down makes it correct
 
-    global_timeline = timeline_apply_pitch_compensation(global_timeline,
-                                                        mapping.melodic_pitch_comp_k)
+    global_timeline = timeline_apply_pitch_compensation(
+        global_timeline, mapping.melodic_pitch_comp_k
+    )
     global_timeline = timeline_fix_gate_lens(global_timeline, song, mapping)
-    global_timeline: List[
-        AbsoluteCompleteNoteWithTick] = timeline_quantize_to_song_ticks(global_timeline,
-                                                                        song)
-    global_timeline: List[
-        List[AbsoluteCompleteNoteWithTick]] = timeline_group_by_instrument(
-        global_timeline)
+    global_timeline: list[AbsoluteCompleteNoteWithTick] = (
+        timeline_quantize_to_song_ticks(global_timeline, song)
+    )
+    global_timeline: list[list[AbsoluteCompleteNoteWithTick]] = (
+        timeline_group_by_instrument(global_timeline)
+    )
     global_timeline = timeline_split_tracks_for_ranges(global_timeline)
-    global_timeline: List[
-        List[AbsoluteCompleteChordWithTick]] = timeline_group_into_perfect_chords(
-        global_timeline)
+    global_timeline: list[list[AbsoluteCompleteChordWithTick]] = (
+        timeline_group_into_perfect_chords(global_timeline)
+    )
 
     # Raises exceptions on check failures
     timeline_checks(song, global_timeline, mapping)
@@ -115,7 +135,7 @@ def convert_midi_to_song(midi_song: MidiFile,
     next_id = 0
     highest_tick = 0
 
-    midi_drum_to_drum_idx: Dict[int, int] = {}
+    midi_drum_to_drum_idx: dict[int, int] = {}
     track_idx_to_midi_instrument = []
     for old_track in global_timeline:
         this_track_is_drum = old_track[0].is_drum
@@ -127,8 +147,9 @@ def convert_midi_to_song(midi_song: MidiFile,
             instrument = Instrument(
                 waveform=11,
                 octave=4,
-                amp_envelope=Envelope(attack=10, decay=100, sustain=500, release=100,
-                                      amplitude=1024)
+                amp_envelope=Envelope(
+                    attack=10, decay=100, sustain=500, release=100, amplitude=1024
+                ),
             )
             # actually load the drums in
             # and keep what midi note to what sample index they should go to
@@ -146,16 +167,19 @@ def convert_midi_to_song(midi_song: MidiFile,
             highest_note = max(max(chord.notes) for chord in old_track)
             lowest_note = min(min(chord.notes) for chord in old_track)
 
-            def octave_offset_work(octave: int) -> bool:
-                return ((((octave - 2) * 12) <= lowest_note) and
-                        (highest_note <= ((octave - 2) * 12 + 63)))
+            def octave_offset_work(
+                octave: int, lowest: int = lowest_note, highest: int = highest_note
+            ) -> bool:
+                return (((octave - 2) * 12) <= lowest) and (
+                    highest <= ((octave - 2) * 12 + 63)
+                )
 
-            for potential_offset in range(0, 10):  # find the first offset that works
+            for potential_offset in range(10):  # find the first offset that works
                 if octave_offset_work(potential_offset):
                     instrument.octave = potential_offset
                     break
             else:
-                raise ValueError(f"Track range too big to fit! (please report)")
+                raise ValueError("Track range too big to fit! (please report)")
             # none for melodic instrument
             drums = None
             # Record the MIDI instrument
@@ -171,25 +195,31 @@ def convert_midi_to_song(midi_song: MidiFile,
                 notes = (midi_drum_to_drum_idx[note] for note in chord.notes)
             else:
                 notes = chord.notes
-            new_track.notes.append(NoteEvent(
-                notes=[Note(note=n, enharmonic_spelling=EnharmonicSpelling.NORMAL) for n
-                       in notes],
-                start_tick=chord.start_tick,
-                end_tick=chord.end_tick,
-                velocity=chord.velocity
-            ))
+            new_track.notes.append(
+                NoteEvent(
+                    notes=[
+                        Note(note=n, enharmonic_spelling=EnharmonicSpelling.NORMAL)
+                        for n in notes
+                    ],
+                    start_tick=chord.start_tick,
+                    end_tick=chord.end_tick,
+                    velocity=chord.velocity,
+                )
+            )
 
         song.tracks.append(new_track)
-        next_id += 1
+        next_id += 1  # noqa: SIM113
 
     # fix the ending measure count
     ticks_per_measure = song.beats_per_measure * song.ticks_per_beat
     song.measures = ceil(highest_tick / ticks_per_measure)
 
     time_for_tick = (60 / song.beats_per_minute) / song.ticks_per_beat
-    logger.debug(f"Finished mapping to MakeCode Arcade song with {len(song.tracks)} "
-                 f"tracks, length of {highest_tick} ticks which is "
-                 f"{highest_tick * time_for_tick} seconds")
+    logger.debug(
+        f"Finished mapping to MakeCode Arcade song with {len(song.tracks)} "
+        f"tracks, length of {highest_tick} ticks which is "
+        f"{highest_tick * time_for_tick} seconds"
+    )
 
     if len(midi_drum_to_drum_idx) > 0:
         drum_idx_to_midi_drum = list(midi_drum_to_drum_idx.keys())
