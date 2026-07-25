@@ -24,7 +24,7 @@ def set_8_bit_number(buf: bytearray, offset: int, value: int) -> None:
 
 
 def get_8_bit_number(buf: bytearray, offset: int) -> int:
-    return struct.unpack_from("<B", buf, offset)[0]
+    return struct.unpack_from("<B", buf, offset)[0]  # type: ignore[no-any-return]
 
 
 def set_16_bit_number(buf: bytearray, offset: int, value: int) -> None:
@@ -32,7 +32,7 @@ def set_16_bit_number(buf: bytearray, offset: int, value: int) -> None:
 
 
 def get_16_bit_number(buf: bytearray, offset: int) -> int:
-    return struct.unpack_from("<H", buf, offset)[0]
+    return struct.unpack_from("<H", buf, offset)[0]  # type: ignore[no-any-return]
 
 
 def encode_song_to_hex(song: Song) -> str:
@@ -62,7 +62,7 @@ def encode_song(song: Song) -> bytearray:
     ]
     encoded_track_velocities: list[bytearray] = list(
         filter(
-            lambda v: v is not None,
+            lambda v: v is not None,  # type: ignore[arg-type]
             [encode_track_velocity(track) for track in song.tracks],
         )
     )
@@ -562,6 +562,9 @@ def decode_drum_track(buf: bytearray, offset: int) -> tuple[Track, int]:
 
     drum_byte_length = get_16_bit_number(buf, offset + 2)
     current_offset = offset + 4
+
+    if res.drums is None:
+        raise ValueError("Trying to decode drum track but drums is None")
 
     while current_offset < (offset + 4 + drum_byte_length):
         res.drums.append(decode_drum_instrument(buf, current_offset))

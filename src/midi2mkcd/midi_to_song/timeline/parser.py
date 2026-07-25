@@ -276,7 +276,7 @@ def timeline_group_messages(
     active_notes: dict[tuple[int, int], list[AbsoluteCompleteNote]] = {
         (port, channel): [] for port in range(highest_port + 1) for channel in range(16)
     }
-    last_time = 0
+    last_time = 0.0
 
     current_poly = 0
     max_poly = 0

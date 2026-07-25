@@ -12,7 +12,7 @@ def timeline_checks(
     song: Song,
     timeline: list[list[AbsoluteCompleteChordWithTick]],
     mapping: InstrumentParameterMapping,
-):
+) -> None:
     """
     Run some basic checks on the timeline to verify assumptions before mapping to the
     MakeCode Arcade dataclasses.

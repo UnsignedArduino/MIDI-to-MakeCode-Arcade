@@ -87,6 +87,8 @@ def load_instrument_params(
     :param testing_opts: Extra options used for testing, passed from the CLI.
     :return: An `InstrumentParameterMapping` object.
     """
+    if testing_opts is None:
+        testing_opts = TestingOptionsForLoadInstrumentParams()
     logger.debug(
         f"Loading instrument parameters from {len(yaml_text)} characters of YAML text"
     )

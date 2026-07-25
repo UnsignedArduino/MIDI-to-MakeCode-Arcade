@@ -13,7 +13,9 @@ from midi2mkcd.arcade.music_types import (
     Song,
     Track,
 )
-from midi2mkcd.midi_to_song.instruments import InstrumentParameterMapping
+from midi2mkcd.midi_to_song.instruments import (
+    InstrumentParameterMapping as InstrumentParameterMapping,
+)
 from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteChordWithTick,
     AbsoluteCompleteNote,
@@ -74,12 +76,12 @@ def convert_midi_to_song(
 
     logger.debug("Resolving timeline")
 
-    global_timeline: list[AbsoluteTimeMessage] = timeline_build(midi_song)
-    global_timeline: list[AbsoluteTimeMessageWithInstrument] = (
-        timeline_find_instrument_data(global_timeline)
+    global_timeline_0: list[AbsoluteTimeMessage] = timeline_build(midi_song)
+    global_timeline_1: list[AbsoluteTimeMessageWithInstrument] = (
+        timeline_find_instrument_data(global_timeline_0)
     )
-    global_timeline: list[AbsoluteCompleteNote] = timeline_group_messages(
-        global_timeline
+    global_timeline_2: list[AbsoluteCompleteNote] = timeline_group_messages(
+        global_timeline_1
     )
 
     if testing_opts.replace_all_melodics_with is not None:
@@ -87,7 +89,7 @@ def convert_midi_to_song(
             f"Testing option enabled to replace all melodic instruments with "
             f"MIDI instrument {testing_opts.replace_all_melodics_with}"
         )
-        for m in global_timeline:
+        for m in global_timeline_2:
             if not m.is_drum:
                 m.instrument = testing_opts.replace_all_melodics_with
     if testing_opts.replace_all_drums_with is not None:
@@ -95,7 +97,7 @@ def convert_midi_to_song(
             f"Testing option enabled to replace all drum notes with MIDI drum "
             f"note {testing_opts.replace_all_drums_with}"
         )
-        for m in global_timeline:
+        for m in global_timeline_2:
             if m.is_drum:
                 m.note = testing_opts.replace_all_drums_with
 
@@ -104,28 +106,28 @@ def convert_midi_to_song(
     # And now I have no idea why I need to shift down another octave but then it works
     # Drums don't need this because we already map from MIDI drum notes to an index into
     # a list of drum instruments in a track, which we control
-    for note in global_timeline:
+    for note in global_timeline_2:
         if not note.is_drum:
             note.note -= 11  # MIDI 60 (C4) maps to Arcade's C4 of 49
             note.note -= 12  # another octave down makes it correct
 
-    global_timeline = timeline_apply_pitch_compensation(
-        global_timeline, mapping.melodic_pitch_comp_k
+    global_timeline_3 = timeline_apply_pitch_compensation(
+        global_timeline_2, mapping.melodic_pitch_comp_k
     )
-    global_timeline = timeline_fix_gate_lens(global_timeline, song, mapping)
-    global_timeline: list[AbsoluteCompleteNoteWithTick] = (
-        timeline_quantize_to_song_ticks(global_timeline, song)
+    global_timeline_4 = timeline_fix_gate_lens(global_timeline_3, song, mapping)
+    global_timeline_5: list[AbsoluteCompleteNoteWithTick] = (
+        timeline_quantize_to_song_ticks(global_timeline_4, song)
     )
-    global_timeline: list[list[AbsoluteCompleteNoteWithTick]] = (
-        timeline_group_by_instrument(global_timeline)
+    global_timeline_6: list[list[AbsoluteCompleteNoteWithTick]] = (
+        timeline_group_by_instrument(global_timeline_5)
     )
-    global_timeline = timeline_split_tracks_for_ranges(global_timeline)
-    global_timeline: list[list[AbsoluteCompleteChordWithTick]] = (
-        timeline_group_into_perfect_chords(global_timeline)
+    global_timeline_7 = timeline_split_tracks_for_ranges(global_timeline_6)
+    global_timeline_8: list[list[AbsoluteCompleteChordWithTick]] = (
+        timeline_group_into_perfect_chords(global_timeline_7)
     )
 
     # Raises exceptions on check failures
-    timeline_checks(song, global_timeline, mapping)
+    timeline_checks(song, global_timeline_8, mapping)
 
     # With all this pitch checks and timing manipulations done to fit MakeCode Arcade's
     # song's constraints, we should be able to basically map 1-1 to the MakeCode Arcade
@@ -137,7 +139,7 @@ def convert_midi_to_song(
 
     midi_drum_to_drum_idx: dict[int, int] = {}
     track_idx_to_midi_instrument = []
-    for old_track in global_timeline:
+    for old_track in global_timeline_8:
         this_track_is_drum = old_track[0].is_drum
         highest_tick = max([highest_tick] + [c.end_tick for c in old_track])
 
@@ -192,7 +194,7 @@ def convert_midi_to_song(
         )
         for chord in old_track:
             if this_track_is_drum:
-                notes = (midi_drum_to_drum_idx[note] for note in chord.notes)
+                notes = [midi_drum_to_drum_idx[note] for note in chord.notes]
             else:
                 notes = chord.notes
             new_track.notes.append(

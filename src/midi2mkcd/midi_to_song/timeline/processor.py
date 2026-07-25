@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from copy import deepcopy
 from math import ceil
 
@@ -38,7 +39,7 @@ def timeline_apply_pitch_compensation(
     logger.debug(f"Applying pitch compensation factor of {k=} to timeline")
     res = []
     ref_note = 60 - 11 - 12  # notes were adjusted
-    scaler = lambda n: 2 ** (-(n - ref_note) / 12 * k)
+    scaler: Callable[[int], float] = lambda n: 2 ** (-(n - ref_note) / 12 * k)
     logger.debug(f"Reference note is MIDI note {ref_note}")
     logger.debug(
         f"Scaler value examples for octave -2, -1, 0, 1, and 2: "

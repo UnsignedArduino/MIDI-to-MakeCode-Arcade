@@ -40,3 +40,7 @@ target-version = "py314"
 [tool.mypy]
 python_version = "3.14"
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["mido.*"]
+ignore_missing_imports = true

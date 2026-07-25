@@ -5,12 +5,11 @@ from pathlib import Path
 from mido import MidiFile
 
 from midi2mkcd.arcade.music import encode_song_to_hex
-from midi2mkcd.midi_to_song import (
-    InstrumentParameterMapping,
+from midi2mkcd.midi_to_song import InstrumentParameterMapping, convert_midi_to_song
+from midi2mkcd.midi_to_song.models import (
+    TestingOptionsForLoadInstrumentParams,
     TestingOptionsForMIDIToSong,
-    convert_midi_to_song,
 )
-from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
 from midi2mkcd.utils.logger import create_logger
 from midi2mkcd.utils.strings import parse_range
 
