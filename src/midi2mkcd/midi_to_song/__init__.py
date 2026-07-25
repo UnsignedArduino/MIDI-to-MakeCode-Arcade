@@ -1,5 +1,6 @@
 import logging
 from copy import deepcopy
+from dataclasses import dataclass
 from math import ceil
 
 from mido import MidiFile
@@ -44,11 +45,22 @@ from midi2mkcd.utils.logger import create_logger
 logger = create_logger(name=__name__, level=logging.INFO)
 
 
+@dataclass
+class ConvertMIDIToSongResult:
+    song: Song
+    # a list of ints, where the index maps to the correct MIDI note. (so in a drum
+    # track, drum index 0 maps to the MIDI drum note at index 0 in the list, etc.)
+    drum_idx_to_midi_drum: list[int]
+    # a list of ints, where the index maps to the correct MIDI instrument, where -1 is
+    # the standard drum kit
+    track_idx_to_midi_instrument: list[int]
+
+
 def convert_midi_to_song(
     midi_song: MidiFile,
     mapping: InstrumentParameterMapping,
     testing_opts: TestingOptionsForMIDIToSong | None = None,
-) -> tuple[Song, list[int], list[int]]:
+) -> ConvertMIDIToSongResult:
     """
     Convert a MIDI file into a MakeCode Arcade song.
 
@@ -56,10 +68,7 @@ def convert_midi_to_song(
     :param mapping: An `InstrumentParameterMapping` object, loaded from
      `load_instrument_params`.
     :param testing_opts: Extra options used for testing, passed from the CLI.
-    :return: A tuple of the MakeCode Arcade `Song` object; a list of ints, where the
-     index maps to the correct MIDI note. (so in a drum track, drum index 0 maps to the
-     MIDI drum note at index 0 in the list, etc.); and a list of ints, where the index
-     maps to the correct MIDI instrument, where -1 is the standard drum kit.
+    :return: A convertMIDIToSongResult data class.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
 
@@ -231,4 +240,8 @@ def convert_midi_to_song(
 
     logger.debug(f"Track indices to MIDI instruments: {track_idx_to_midi_instrument}")
 
-    return song, drum_idx_to_midi_drum, track_idx_to_midi_instrument
+    return ConvertMIDIToSongResult(
+        song=song,
+        drum_idx_to_midi_drum=drum_idx_to_midi_drum,
+        track_idx_to_midi_instrument=track_idx_to_midi_instrument,
+    )

@@ -194,10 +194,8 @@ def generate_single_conversion(
     :return: The final output.
     """
     logger.info("Generating single conversion")
-    (song, drum_note_list, track_instrument_list) = convert_midi_to_song(
-        midi, mapping, testing_opts_for_midi_to_song
-    )
-    h = encode_song_to_hex(song)
+    result = convert_midi_to_song(midi, mapping, testing_opts_for_midi_to_song)
+    h = encode_song_to_hex(result.song)
     final_output = f"hex`{h}`"
     logger.info("Finished converting MIDI file")
     # Generate sample code or
@@ -209,8 +207,8 @@ def generate_single_conversion(
     elif generate_extra_code:
         logger.debug("Writing out extra code")
         final_output = f"""const songHex = {final_output};
-const midiDrumNoteMap: number[] = {drum_note_list};
-const trackInstrumentMap: number[] = {track_instrument_list};
+const midiDrumNoteMap: number[] = {result.drum_idx_to_midi_drum};
+const trackInstrumentMap: number[] = {result.track_idx_to_midi_instrument};
 """
     # Add comments
     if testing_opts_for_midi_to_song.replace_all_melodics_with is not None:
@@ -259,8 +257,8 @@ def generate_melodic_instrument_sample(
     for instrument in melodics_to_sample:
         logger.info(f"Generating code for melodic instrument {instrument}")
         testing_opts_for_midi_to_song.replace_all_melodics_with = instrument
-        song, _, _ = convert_midi_to_song(midi, mapping, testing_opts_for_midi_to_song)
-        h = encode_song_to_hex(song)
+        result = convert_midi_to_song(midi, mapping, testing_opts_for_midi_to_song)
+        h = encode_song_to_hex(result.song)
         final_output += f"""// melodics replaced with MIDI instrument {instrument}
 info.setScore({instrument});
 music.play(music.createSong(
