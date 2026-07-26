@@ -37,3 +37,20 @@ def parse_range(value: str) -> list[int]:
                 raise argparse.ArgumentTypeError(f"Invalid integer: '{part}'")
 
     return sorted(result)
+
+
+# Thanks Claude
+def decode_lyric_text(msg: str) -> str:
+    """
+    MIDI encodes all text as latin-1, undo and try UTF-8
+
+    :param msg: MIDI lyric text
+    :return: Lyric text but in UTF-8
+    """
+    raw = msg.encode("latin-1")
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]  # strip BOM
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")  # fall back to what mido already assumed

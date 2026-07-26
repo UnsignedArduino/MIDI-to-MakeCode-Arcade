@@ -76,7 +76,7 @@ def main() -> None:
     output_path = Path(args.output) if args.output is not None else None
     if output_path is not None:
         logger.info(f"Writing result to {output_path}")
-        output_path.write_text(final_output)
+        output_path.write_text(final_output, encoding="utf-8")
     else:
         logger.info("Writing result to stdout")
         print(f"\n{final_output}\n")

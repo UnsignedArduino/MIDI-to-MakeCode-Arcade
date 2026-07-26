@@ -14,6 +14,7 @@ from midi2mkcd.midi_to_song.models import (
     AbsoluteTimeLyric,
 )
 from midi2mkcd.utils.logger import create_logger
+from midi2mkcd.utils.strings import decode_lyric_text
 
 logger = create_logger(name=__name__, level=logging.INFO)
 
@@ -180,7 +181,9 @@ def timeline_lyrics_quantize_to_song_ticks(
     for old_lyric in timeline:
         new_start_tick = round(old_lyric.time / tick_time)
         res.append(
-            AbsoluteCompleteLyricWithTick(tick=new_start_tick, lyric=old_lyric.msg.text)
+            AbsoluteCompleteLyricWithTick(
+                tick=new_start_tick, lyric=decode_lyric_text(old_lyric.msg.text)
+            )
         )
 
     return res
