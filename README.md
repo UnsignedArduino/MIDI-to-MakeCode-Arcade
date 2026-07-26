@@ -55,7 +55,8 @@ visualizer above can use to make the visuals more accurate.
 [Here](https://makecode.com/_E75AehCdch5c) is an example (once again, at the
 time of writing, per-chord velocity is in beta, so import into the beta editor
 if desired). In the visualizer, you can press B to open the track list and use
-arrow keys to highlight a particular track if desired.
+arrow keys to highlight a particular track if desired. Any lyrics (lyric meta
+message only so far) in the MIDI file will also be exported.
 
 ### MIDI standards/features supported
 
@@ -75,6 +76,7 @@ Features:
   track to a drum track and back (will only use the standard drum kit notes)
 * Per note velocity (MakeCode Arcade will ignore this for now, but it is
   song's output - MakeCode Arcade beta at the time of writing supports it)
+* Lyric meta messages
 
 ### Defining your own instrument parameter file
 
