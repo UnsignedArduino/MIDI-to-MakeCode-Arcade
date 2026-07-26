@@ -2,6 +2,7 @@ import logging
 
 from mido import MidiFile, tick2second
 
+from midi2mkcd.midi_to_song import AbsoluteTimeLyric
 from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteNote,
     AbsoluteTickMessage,
@@ -78,6 +79,7 @@ def timeline_build(midi_song: MidiFile) -> list[AbsoluteTimeMessage]:
         msg = item.msg
         track_idx = item.track
         abs_ticks = item.tick
+        # print(f"{abs_ticks}: {msg}")
 
         delta_ticks = abs_ticks - last_abs_ticks
         if delta_ticks > 0:
@@ -89,11 +91,15 @@ def timeline_build(midi_song: MidiFile) -> list[AbsoluteTimeMessage]:
             current_tempo = msg.tempo
         elif msg.type == "midi_port":
             track_ports[track_idx] = msg.port
-        # Keep note on/off, program change, sysex, and control change (only if control
-        # is 0 or 32 which is the bank select MSB/LSB)
-        elif msg.type in ("note_on", "note_off", "program_change", "sysex") or (
-            msg.type == "control_change" and msg.control in (0, 32)
-        ):
+        # Keep note on/off, program change, sysex, control change (only if control is 0
+        # or 32 which is the bank select MSB/LSB), and lyrics
+        elif msg.type in (
+            "note_on",
+            "note_off",
+            "program_change",
+            "sysex",
+            "lyrics",
+        ) or (msg.type == "control_change" and msg.control in (0, 32)):
             global_timeline.append(
                 AbsoluteTimeMessage(
                     time=current_abs_time, port=track_ports[track_idx], msg=msg
@@ -255,6 +261,28 @@ def timeline_find_instrument_data(
     )
 
     return timeline_with_instrument
+
+
+def timeline_find_lyrics(
+    timeline: list[AbsoluteTimeMessage],
+) -> list[AbsoluteTimeLyric]:
+    """
+    Filter for lyrics.
+
+    :param timeline: A list of `AbsoluteTimeMessage` objects.
+    :return: A list of `AbsoluteTimeLyric` objects.
+    """
+    logger.debug("Finding lyrics in the timeline")
+
+    timeline_lyrics = [
+        AbsoluteTimeLyric(time=item.time, msg=item.msg)
+        for item in timeline
+        if item.msg.type == "lyrics"
+    ]
+
+    logger.debug(f"Global timeline has {len(timeline_lyrics)} lyric messages")
+
+    return timeline_lyrics
 
 
 def timeline_group_messages(

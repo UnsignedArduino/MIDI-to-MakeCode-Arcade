@@ -8,8 +8,10 @@ from midi2mkcd.arcade.music_types import Song
 from midi2mkcd.midi_to_song import InstrumentParameterMapping
 from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteChordWithTick,
+    AbsoluteCompleteLyricWithTick,
     AbsoluteCompleteNote,
     AbsoluteCompleteNoteWithTick,
+    AbsoluteTimeLyric,
 )
 from midi2mkcd.utils.logger import create_logger
 
@@ -151,6 +153,34 @@ def timeline_quantize_to_song_ticks(
                 instrument=old_note.instrument,
                 is_drum=old_note.is_drum,
             )
+        )
+
+    return res
+
+
+def timeline_lyrics_quantize_to_song_ticks(
+    timeline: list[AbsoluteTimeLyric], song: Song
+) -> list[AbsoluteCompleteLyricWithTick]:
+    """
+    Given the song's BPM and TPB, quantize the timeline lyric's start times to ticks.
+
+    :param timeline: A list of `AbsoluteTimeLyric` objects.
+    :param song: The `Song` object to use.
+    :return: A list of `AbsoluteCompleteLyricWithTick` objects.
+    """
+    tick_time = (60 / song.beats_per_minute) / song.ticks_per_beat  # in secs
+    logger.debug(
+        f"Quantizing lyric times to ticks based of song BPM of "
+        f"{song.beats_per_minute} and TPB of {song.ticks_per_beat} - one tick "
+        f"is 1/{1 / tick_time} ({tick_time}) seconds long"
+    )
+
+    res = []
+
+    for old_lyric in timeline:
+        new_start_tick = round(old_lyric.time / tick_time)
+        res.append(
+            AbsoluteCompleteLyricWithTick(tick=new_start_tick, lyric=old_lyric.msg.text)
         )
 
     return res

@@ -56,6 +56,12 @@ class AbsoluteTimeMessageWithInstrument:
 
 
 @dataclass
+class AbsoluteTimeLyric:
+    time: float
+    msg: Message
+
+
+@dataclass
 class AbsoluteCompleteNote:
     start_time: float
     end_time: float
@@ -77,6 +83,12 @@ class AbsoluteCompleteNoteWithTick:
 
     instrument: int
     is_drum: bool
+
+
+@dataclass
+class AbsoluteCompleteLyricWithTick:
+    tick: int
+    lyric: str
 
 
 @dataclass

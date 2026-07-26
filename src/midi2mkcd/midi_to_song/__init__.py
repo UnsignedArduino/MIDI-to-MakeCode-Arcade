@@ -25,9 +25,14 @@ from midi2mkcd.midi_to_song.models import (
     AbsoluteTimeMessageWithInstrument,
     TestingOptionsForMIDIToSong,
 )
+from midi2mkcd.midi_to_song.models import (
+    AbsoluteCompleteLyricWithTick as AbsoluteCompleteLyricWithTick,
+)
+from midi2mkcd.midi_to_song.models import AbsoluteTimeLyric as AbsoluteTimeLyric
 from midi2mkcd.midi_to_song.timeline.parser import (
     timeline_build,
     timeline_find_instrument_data,
+    timeline_find_lyrics,
     timeline_group_messages,
 )
 from midi2mkcd.midi_to_song.timeline.processor import (
@@ -36,10 +41,14 @@ from midi2mkcd.midi_to_song.timeline.processor import (
     timeline_fix_gate_lens,
     timeline_group_by_instrument,
     timeline_group_into_perfect_chords,
+    timeline_lyrics_quantize_to_song_ticks,
     timeline_quantize_to_song_ticks,
     timeline_split_tracks_for_ranges,
 )
-from midi2mkcd.midi_to_song.timeline.validation import timeline_checks
+from midi2mkcd.midi_to_song.timeline.validation import (
+    timeline_checks,
+    timeline_lyrics_checks,
+)
 from midi2mkcd.utils.logger import create_logger
 
 logger = create_logger(name=__name__, level=logging.INFO)
@@ -54,6 +63,10 @@ class ConvertMIDIToSongResult:
     # a list of ints, where the index maps to the correct MIDI instrument, where -1 is
     # the standard drum kit
     track_idx_to_midi_instrument: list[int]
+    # a list of ints, which is the starting tick of the lyric
+    lyric_ticks: list[int]
+    # a list of strs, which is the lyrics themselves
+    lyric_texts: list[str]
 
 
 def convert_midi_to_song(
@@ -85,12 +98,12 @@ def convert_midi_to_song(
 
     logger.debug("Resolving timeline")
 
-    global_timeline_0: list[AbsoluteTimeMessage] = timeline_build(midi_song)
-    global_timeline_1: list[AbsoluteTimeMessageWithInstrument] = (
-        timeline_find_instrument_data(global_timeline_0)
+    global_timeline: list[AbsoluteTimeMessage] = timeline_build(midi_song)
+    global_timeline_0: list[AbsoluteTimeMessageWithInstrument] = (
+        timeline_find_instrument_data(global_timeline)
     )
-    global_timeline_2: list[AbsoluteCompleteNote] = timeline_group_messages(
-        global_timeline_1
+    global_timeline_1: list[AbsoluteCompleteNote] = timeline_group_messages(
+        global_timeline_0
     )
 
     if testing_opts.replace_all_melodics_with is not None:
@@ -98,7 +111,7 @@ def convert_midi_to_song(
             f"Testing option enabled to replace all melodic instruments with "
             f"MIDI instrument {testing_opts.replace_all_melodics_with}"
         )
-        for m in global_timeline_2:
+        for m in global_timeline_1:
             if not m.is_drum:
                 m.instrument = testing_opts.replace_all_melodics_with
     if testing_opts.replace_all_drums_with is not None:
@@ -106,7 +119,7 @@ def convert_midi_to_song(
             f"Testing option enabled to replace all drum notes with MIDI drum "
             f"note {testing_opts.replace_all_drums_with}"
         )
-        for m in global_timeline_2:
+        for m in global_timeline_1:
             if m.is_drum:
                 m.note = testing_opts.replace_all_drums_with
 
@@ -115,28 +128,40 @@ def convert_midi_to_song(
     # And now I have no idea why I need to shift down another octave but then it works
     # Drums don't need this because we already map from MIDI drum notes to an index into
     # a list of drum instruments in a track, which we control
-    for note in global_timeline_2:
+    for note in global_timeline_1:
         if not note.is_drum:
             note.note -= 11  # MIDI 60 (C4) maps to Arcade's C4 of 49
             note.note -= 12  # another octave down makes it correct
 
-    global_timeline_3 = timeline_apply_pitch_compensation(
-        global_timeline_2, mapping.melodic_pitch_comp_k
+    global_timeline_2 = timeline_apply_pitch_compensation(
+        global_timeline_1, mapping.melodic_pitch_comp_k
     )
-    global_timeline_4 = timeline_fix_gate_lens(global_timeline_3, song, mapping)
-    global_timeline_5: list[AbsoluteCompleteNoteWithTick] = (
-        timeline_quantize_to_song_ticks(global_timeline_4, song)
+    global_timeline_3 = timeline_fix_gate_lens(global_timeline_2, song, mapping)
+    global_timeline_4: list[AbsoluteCompleteNoteWithTick] = (
+        timeline_quantize_to_song_ticks(global_timeline_3, song)
     )
-    global_timeline_6: list[list[AbsoluteCompleteNoteWithTick]] = (
-        timeline_group_by_instrument(global_timeline_5)
+    global_timeline_5: list[list[AbsoluteCompleteNoteWithTick]] = (
+        timeline_group_by_instrument(global_timeline_4)
     )
-    global_timeline_7 = timeline_split_tracks_for_ranges(global_timeline_6)
-    global_timeline_8: list[list[AbsoluteCompleteChordWithTick]] = (
-        timeline_group_into_perfect_chords(global_timeline_7)
+    global_timeline_6 = timeline_split_tracks_for_ranges(global_timeline_5)
+    global_timeline_7: list[list[AbsoluteCompleteChordWithTick]] = (
+        timeline_group_into_perfect_chords(global_timeline_6)
     )
 
     # Raises exceptions on check failures
-    timeline_checks(song, global_timeline_8, mapping)
+    timeline_checks(song, global_timeline_7, mapping)
+
+    # Now let's do lyrics
+    global_timeline_lyrics_0: list[AbsoluteTimeLyric] = timeline_find_lyrics(
+        global_timeline
+    )
+    global_timeline_lyrics_1: list[AbsoluteCompleteLyricWithTick] = (
+        timeline_lyrics_quantize_to_song_ticks(global_timeline_lyrics_0, song)
+    )
+
+    # Raises exceptions on check failures
+    # Currently none but we'll add this right now
+    timeline_lyrics_checks(song, global_timeline_7, global_timeline_lyrics_1)
 
     # With all this pitch checks and timing manipulations done to fit MakeCode Arcade's
     # song's constraints, we should be able to basically map 1-1 to the MakeCode Arcade
@@ -148,7 +173,7 @@ def convert_midi_to_song(
 
     midi_drum_to_drum_idx: dict[int, int] = {}
     track_idx_to_midi_instrument = []
-    for old_track in global_timeline_8:
+    for old_track in global_timeline_7:
         this_track_is_drum = old_track[0].is_drum
         highest_tick = max([highest_tick] + [c.end_tick for c in old_track])
 
@@ -225,6 +250,14 @@ def convert_midi_to_song(
     ticks_per_measure = song.beats_per_measure * song.ticks_per_beat
     song.measures = ceil(highest_tick / ticks_per_measure)
 
+    # create flat parallel arrays for lyrics
+    lyric_ticks = []
+    lyric_texts = []
+
+    for lyric in global_timeline_lyrics_1:
+        lyric_ticks.append(lyric.tick)
+        lyric_texts.append(lyric.lyric)
+
     time_for_tick = (60 / song.beats_per_minute) / song.ticks_per_beat
     logger.debug(
         f"Finished mapping to MakeCode Arcade song with {len(song.tracks)} "
@@ -244,4 +277,6 @@ def convert_midi_to_song(
         song=song,
         drum_idx_to_midi_drum=drum_idx_to_midi_drum,
         track_idx_to_midi_instrument=track_idx_to_midi_instrument,
+        lyric_ticks=lyric_ticks,
+        lyric_texts=lyric_texts,
     )

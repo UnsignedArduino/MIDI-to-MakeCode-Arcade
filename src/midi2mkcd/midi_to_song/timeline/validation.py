@@ -1,7 +1,10 @@
 import logging
 
 from midi2mkcd.arcade.music_types import Song
-from midi2mkcd.midi_to_song import InstrumentParameterMapping
+from midi2mkcd.midi_to_song import (
+    AbsoluteCompleteLyricWithTick,
+    InstrumentParameterMapping,
+)
 from midi2mkcd.midi_to_song.models import AbsoluteCompleteChordWithTick
 from midi2mkcd.utils.logger import create_logger
 
@@ -108,3 +111,27 @@ def timeline_checks(
                 )
 
     logger.debug("Timeline passes all checks")
+
+
+def timeline_lyrics_checks(
+    song: Song,
+    timeline: list[list[AbsoluteCompleteChordWithTick]],
+    timeline_lyrics: list[AbsoluteCompleteLyricWithTick],
+) -> None:
+    """
+    Run some basic checks on the timeline lyrics to verify assumptions before mapping to
+    the MakeCode Arcade dataclasses.
+
+    :param song: The MakeCode Arcade `Song` object that will be added to, with the
+     correctly configured BPM and TPM.
+    :param timeline: A list of lists of `AbsoluteCompleteChordWithTick` objects.
+    :param timeline_lyrics: A list of lists of `AbsoluteCompleteLyricWithTick` objects.
+    :raises ValueError: If any violatiosn are detected.
+    """
+    # logger.debug("Running checks on the timeline lyrics")
+
+    # As of right now, there are no theoretical ways that the lyrics can really break
+    # song export, and therefore is empty
+    logger.debug("No checks implemented for timeline lyrics, skipping")
+
+    # logger.debug("Timeline lyrics passes all checks")

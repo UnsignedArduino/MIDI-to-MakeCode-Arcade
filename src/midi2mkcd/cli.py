@@ -10,6 +10,7 @@ from midi2mkcd.midi_to_song.models import (
     TestingOptionsForLoadInstrumentParams,
     TestingOptionsForMIDIToSong,
 )
+from midi2mkcd.utils.format import format_ts_str_array
 from midi2mkcd.utils.logger import create_logger
 from midi2mkcd.utils.strings import parse_range
 
@@ -209,6 +210,8 @@ def generate_single_conversion(
         final_output = f"""const songHex = {final_output};
 const midiDrumNoteMap: number[] = {result.drum_idx_to_midi_drum};
 const trackInstrumentMap: number[] = {result.track_idx_to_midi_instrument};
+const lyricTicks: number[] = {result.lyric_ticks};
+const lyricTexts: string[] = {format_ts_str_array(result.lyric_texts)};
 """
     # Add comments
     if testing_opts_for_midi_to_song.replace_all_melodics_with is not None:
