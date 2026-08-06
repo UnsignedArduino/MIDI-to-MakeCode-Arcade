@@ -85,7 +85,7 @@ def timeline_fix_gate_lens(
     """
     logger.debug("Fixing gate lengths of notes in the timeline to avoid playback bug")
 
-    seconds_per_tick = (60 / song.beats_per_measure) / song.ticks_per_beat
+    seconds_per_tick = (60 / song.beats_per_minute) / song.ticks_per_beat
 
     res = []
 
@@ -398,6 +398,57 @@ def timeline_group_into_perfect_chords(
         f"{sum([sum([1 if len(n.notes) > 1 else 0 for n in t]) for t in new_tracks])}"
         f" multi-note chords (dropped from {old_note_count} notes to "
         f"{new_chord_count} chords)"
+    )
+
+    return new_tracks
+
+
+def timeline_split_tracks_for_note_byte_lengths(
+    timeline: list[list[AbsoluteCompleteChordWithTick]],
+) -> list[list[AbsoluteCompleteChordWithTick]]:
+    """
+    Go through the tracks in the timeline and split up any tracks whose note events
+    would not fit in the 16-bit note byte length field of the MakeCode Arcade song
+    format when encoded. Without this, the length silently wraps around and the
+    encoded song is corrupted past the wrap point.
+
+    :param timeline: A list of lists of `AbsoluteCompleteChordWithTick` objects.
+    :return: A list of lists of `AbsoluteCompleteChordWithTick` objects.
+    """
+    logger.debug("Checking necessity to split track to fit note byte length limit")
+
+    max_note_bytes = 65535  # 16-bit note byte length field in the song format
+
+    new_tracks: list[list[AbsoluteCompleteChordWithTick]] = []
+
+    tracks_that_fit = 0
+    tracks_that_split = 0
+
+    for old_track in timeline:
+        # the encoded size of a chord is 5 bytes for the header plus 1 byte per note
+        chord_byte_costs = [5 + len(chord.notes) for chord in old_track]
+        if sum(chord_byte_costs) <= max_note_bytes:
+            new_tracks.append(old_track)
+            tracks_that_fit += 1
+            continue
+        # split into chunks that each fit within the byte limit
+        current_track: list[AbsoluteCompleteChordWithTick] = []
+        current_bytes = 0
+        for chord, cost in zip(old_track, chord_byte_costs):
+            if current_track and current_bytes + cost > max_note_bytes:
+                new_tracks.append(current_track)
+                current_track = []
+                current_bytes = 0
+            current_track.append(chord)
+            current_bytes += cost
+        if current_track:
+            new_tracks.append(current_track)
+        tracks_that_split += 1
+
+    logger.debug(
+        f"{tracks_that_fit} tracks fit within the note byte length limit, "
+        f"{tracks_that_split} tracks had to split, total of {len(new_tracks)} "
+        f"tracks in timeline"
     )
 
     return new_tracks

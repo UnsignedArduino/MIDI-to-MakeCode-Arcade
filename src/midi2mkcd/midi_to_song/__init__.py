@@ -43,6 +43,7 @@ from midi2mkcd.midi_to_song.timeline.processor import (
     timeline_group_into_perfect_chords,
     timeline_lyrics_quantize_to_song_ticks,
     timeline_quantize_to_song_ticks,
+    timeline_split_tracks_for_note_byte_lengths,
     timeline_split_tracks_for_ranges,
 )
 from midi2mkcd.midi_to_song.timeline.validation import (
@@ -147,9 +148,12 @@ def convert_midi_to_song(
     global_timeline_7: list[list[AbsoluteCompleteChordWithTick]] = (
         timeline_group_into_perfect_chords(global_timeline_6)
     )
+    global_timeline_8: list[list[AbsoluteCompleteChordWithTick]] = (
+        timeline_split_tracks_for_note_byte_lengths(global_timeline_7)
+    )
 
     # Raises exceptions on check failures
-    timeline_checks(song, global_timeline_7, mapping)
+    timeline_checks(song, global_timeline_8, mapping)
 
     # Now let's do lyrics
     global_timeline_lyrics_0: list[AbsoluteTimeLyric] = timeline_find_lyrics(
@@ -173,7 +177,7 @@ def convert_midi_to_song(
 
     midi_drum_to_drum_idx: dict[int, int] = {}
     track_idx_to_midi_instrument = []
-    for old_track in global_timeline_7:
+    for old_track in global_timeline_8:
         this_track_is_drum = old_track[0].is_drum
         highest_tick = max([highest_tick] + [c.end_tick for c in old_track])
 

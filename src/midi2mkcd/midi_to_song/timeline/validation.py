@@ -50,6 +50,15 @@ def timeline_checks(
                 f"found {highest_tick}) Decrease song length or reduce "
                 f"BPM/TPB at the cost of worse timing."
             )
+        # The encoded note events must fit in the 16-bit note byte length field
+        # (5 bytes header + 1 byte per note for each chord)
+        note_byte_length = sum(5 + len(chord.notes) for chord in track)
+        if note_byte_length > 65535:
+            raise ValueError(
+                f"Track's note events are too large to encode! (max of "
+                f"65535 bytes, found {note_byte_length} bytes) Reduce "
+                f"polyphony or song length."
+            )
         # The highest and lowest notes must fit within 64 notes of an integer octave
         # offset for melodic instruments
         if not track_is_drum:
