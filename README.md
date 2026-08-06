@@ -52,11 +52,12 @@ uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrume
 
 The `--generate-extra-code` flag will write out extra information that the
 visualizer above can use to make the visuals more accurate.
-[Here](https://makecode.com/_E75AehCdch5c) is an example (once again, at the
-time of writing, per-chord velocity is in beta, so import into the beta editor
-if desired). In the visualizer, you can press B to open the track list and use
-arrow keys to highlight a particular track if desired. Any lyrics (lyric meta
-message only so far) in the MIDI file will also be exported.
+[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example 
+(once again, at the time of writing, per-chord velocity is in beta, so import 
+into the beta editor if desired). In the visualizer, you can press B to switch
+through the main interface, the track viewer (use arrow keys to highlight a 
+track if desired), and the lyric viewer. Any lyrics (lyric meta message only 
+so far) in the MIDI file will also be exported.
 
 ### MIDI standards/features supported
 
