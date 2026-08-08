@@ -28,6 +28,22 @@ def main() -> None:
     if debug:
         set_all_stdout_logger_levels(logging.DEBUG)
     logger.debug(f"Received arguments: {args}")
+    logger.warning(
+        "As of August 2026, long or dense songs may crash the MakeCode Arcade "
+        "simulator, where it seems like the WebAudio playback leaks memory per note. "
+    )
+    logger.warning(
+        "The limit is not a fixed note count - it depends on the game's overall memory "
+        "use (sprites, arrays, etc.), the browser, and how many notes the page session "
+        "has already played."
+    )
+    logger.warning("Reloading the simulator page resets it.")
+    logger.warning(
+        "This warning is printed regardless of the song being converted, "
+        "but in testing, songs with 24k+ notes have been found to crash the "
+        "simulator on the first play (so a song with 15k note "
+        "events played twice may also crash the simulator)."
+    )
 
     (testing_opts_for_load_instrument_params, testing_opts_for_midi_to_song) = (
         generate_testing_options(args)

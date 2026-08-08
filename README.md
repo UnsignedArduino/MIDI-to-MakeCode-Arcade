@@ -30,10 +30,10 @@ uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrume
 
 This will print out the song buffer which you can paste into MakeCode Arcade.
 It will use [
-`example/instrument_params.yaml`](examples/instrument_params.yaml),
-which is an instrument parameter file that defines what each of the general
-MIDI 1's 128 melodic instruments and standard drum kit sound like. An
-instrument parameter file is always required.
+`example/instrument_params.yaml`](examples/instrument_params.yaml), which is an
+instrument parameter file that defines what each of the general MIDI 1's 128
+melodic instruments and standard drum kit sound like. An instrument parameter
+file is always required.
 
 If the output is too big to easily copy from the terminal, use `-o` to write to
 a file: (this will **overwrite it**)
@@ -52,12 +52,29 @@ uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrume
 
 The `--generate-extra-code` flag will write out extra information that the
 visualizer above can use to make the visuals more accurate.
-[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example 
-(once again, at the time of writing, per-chord velocity is in beta, so import 
-into the beta editor if desired). In the visualizer, you can press B to switch
-through the main interface, the track viewer (use arrow keys to highlight a 
-track if desired), and the lyric viewer. Any lyrics (lyric meta message only 
-so far) in the MIDI file will also be exported.
+[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example (once
+again, at the time of writing, per-chord velocity is in beta, so import into
+the beta editor if desired). In the visualizer, you can press B to switch
+through the main interface, the track viewer (use arrow keys to highlight a
+track if desired), and the lyric viewer. Any lyrics (lyric meta message only so
+far) in the MIDI file will also be exported.
+
+### Simulator crash risk (WebAudio memory leak)
+
+Long or dense songs can crash the MakeCode Arcade **browser simulator** (the
+"Aw, Snap!" page). It seems like the simulator's WebAudio playback leaks a few
+KB of memory per note (pxtsim keeps every note's audio nodes alive for the
+whole simulator session), and Chrome kills the renderer process when it runs
+out of memory.
+
+The limit is **not a fixed note count** — it depends on how much memory the
+rest of your game uses (sprites, arrays, etc.), which browser you use, and how
+many notes the simulator has already played. Measured on a modest test game
+(Aug 2026): crashes started around 24,000–24,500 cumulative notes in Chrome,
+but a memory-heavy game may crash earlier, while Firefox tolerates more (at the
+cost of worse performance). Notes from previous plays or other songs in the
+same page session all count toward the limit; **reloading the simulator resets
+it**.
 
 ### MIDI standards/features supported
 
@@ -75,8 +92,8 @@ Features:
 * MIDI ports and channels
 * Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
   track to a drum track and back (will only use the standard drum kit notes)
-* Per note velocity (MakeCode Arcade will ignore this for now, but it is
-  song's output - MakeCode Arcade beta at the time of writing supports it)
+* Per note velocity (MakeCode Arcade will ignore this for now, but it is song's
+  output - MakeCode Arcade beta at the time of writing supports it)
 * Lyric meta messages
 
 ### Defining your own instrument parameter file
