@@ -12,9 +12,8 @@ from midi2mkcd.arcade.music_types import (
     Instrument,
 )
 from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
-from midi2mkcd.utils.logger import create_logger
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

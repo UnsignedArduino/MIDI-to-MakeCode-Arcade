@@ -5,9 +5,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-from midi2mkcd.utils.logger import create_logger
-
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # /**

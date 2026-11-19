@@ -11,9 +11,8 @@ from midi2mkcd.midi_to_song.models import (
     ChannelState,
     DrumDeterminationSource,
 )
-from midi2mkcd.utils.logger import create_logger
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def timeline_build(midi_song: MidiFile) -> list[AbsoluteTimeMessage]:

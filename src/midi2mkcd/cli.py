@@ -1,4 +1,5 @@
 import logging
+import sys
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -11,7 +12,6 @@ from midi2mkcd.midi_to_song.models import (
     TestingOptionsForMIDIToSong,
 )
 from midi2mkcd.utils.format import format_ts_str_array
-from midi2mkcd.utils.logger import create_logger
 from midi2mkcd.utils.strings import parse_range
 
 try:
@@ -21,7 +21,30 @@ try:
 except ImportError, ModuleNotFoundError:
     CLIPBOARD_AVAILABLE = False
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+_cli_log_handler: logging.Handler | None = None
+
+
+def configure_logging(level: int) -> None:
+    """
+    Send the package's log records to stderr at the given level, so stdout only
+    carries generated code. Safe to call more than once (e.g. in tests): the
+    handler installed by a previous call is replaced, not duplicated.
+
+    :param level: The logging level for the `midi2mkcd` logger.
+    """
+    global _cli_log_handler
+    package_logger = logging.getLogger("midi2mkcd")
+    if _cli_log_handler is not None:
+        package_logger.removeHandler(_cli_log_handler)
+    handler = logging.StreamHandler(stream=sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    package_logger.addHandler(handler)
+    package_logger.setLevel(level)
+    _cli_log_handler = handler
 
 
 def generate_and_parse_args() -> Namespace:

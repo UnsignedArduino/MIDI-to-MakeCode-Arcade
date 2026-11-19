@@ -13,10 +13,9 @@ from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteNoteWithTick,
     AbsoluteTimeLyric,
 )
-from midi2mkcd.utils.logger import create_logger
 from midi2mkcd.utils.strings import decode_lyric_text
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def timeline_apply_pitch_compensation(

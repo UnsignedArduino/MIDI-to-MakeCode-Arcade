@@ -4,13 +4,13 @@ from pathlib import Path
 from mido import MidiFile
 
 from midi2mkcd.cli import (
+    configure_logging,
     generate_and_parse_args,
     generate_melodic_instrument_sample,
     generate_single_conversion,
     generate_testing_options,
 )
 from midi2mkcd.midi_to_song.instruments import load_instrument_params
-from midi2mkcd.utils.logger import create_logger, set_all_stdout_logger_levels
 
 try:
     import pyperclip
@@ -19,14 +19,12 @@ try:
 except ImportError, ModuleNotFoundError:
     CLIPBOARD_AVAILABLE = False
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     args = generate_and_parse_args()
-    debug = bool(args.debug)
-    if debug:
-        set_all_stdout_logger_levels(logging.DEBUG)
+    configure_logging(args.debug)
     logger.debug(f"Received arguments: {args}")
     logger.warning(
         "As of August 2026, long or dense songs may crash the MakeCode Arcade "

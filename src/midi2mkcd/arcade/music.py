@@ -14,9 +14,8 @@ from midi2mkcd.arcade.music_types import (
     Song,
     Track,
 )
-from midi2mkcd.utils.logger import create_logger
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def set_8_bit_number(buf: bytearray, offset: int, value: int) -> None:

@@ -6,9 +6,7 @@ from enum import IntEnum
 
 from mido import Message
 
-from midi2mkcd.utils.logger import create_logger
-
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # All intermediate representations used during conversion

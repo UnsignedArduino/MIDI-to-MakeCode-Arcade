@@ -45,4 +45,4 @@ Format limits that drive most of the pipeline's complexity: each note is stored 
 ## Conventions
 
 - mypy runs in `strict` mode (`mido` is untyped and ignored). Ruff targets py314. Note that Python 3.14 syntax such as unparenthesized `except A, B:` is used.
-- Logging goes through `utils/logger.create_logger(name=__name__, ...)`. `--debug` raises all stdout loggers to DEBUG.
+- Library modules only do `logger = logging.getLogger(__name__)`; the package root adds a `NullHandler`. Only the CLI configures logging (`cli.configure_logging`: one stderr handler on the `midi2mkcd` logger), so stdout carries only generated code. `--debug` sets the level to DEBUG.
