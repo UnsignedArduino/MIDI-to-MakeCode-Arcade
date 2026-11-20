@@ -15,7 +15,7 @@ dependencies = [
 
 
 [project.scripts]
-midi2mkcd = "midi2mkcd.main:main"
+midi2mkcd = "midi2mkcd.cli:main"
 
 [project.optional-dependencies]
 optional = [
@@ -41,6 +41,8 @@ target-version = "py314"
 [tool.mypy]
 python_version = "3.14"
 strict = true
+# tests import their shared `helpers` module by name (pytest puts tests/ on the path)
+mypy_path = "tests"
 
 [[tool.mypy.overrides]]
 module = ["mido.*"]

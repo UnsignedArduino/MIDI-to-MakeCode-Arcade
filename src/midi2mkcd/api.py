@@ -38,7 +38,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-OutputFormat = Literal["hex", "play", "visualizer"]
+OutputFormat = Literal["hex", "code", "code_extra"]
 
 # A path (`str` or path-like), raw bytes, or a binary file object
 MidiInput = bytes | bytearray | memoryview | BinaryIO | os.PathLike[str] | str
@@ -77,8 +77,8 @@ class ConversionResult:
         """
         Return the song as MakeCode Arcade TypeScript.
 
-        :param format: `"hex"` for just the ``hex`...` `` literal, `"play"` for a
-         statement that plays the song, or `"visualizer"` for the constants the
+        :param format: `"hex"` for just the ``hex`...` `` literal, `"code"` for a
+         statement that plays the song, or `"code_extra"` for the constants the
          Song-Visualizer project expects.
         :return: The generated code.
         """

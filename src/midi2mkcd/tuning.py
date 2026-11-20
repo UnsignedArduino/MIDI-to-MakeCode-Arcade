@@ -34,10 +34,12 @@ from midi2mkcd.midi_to_song.timeline.parser import (
     timeline_find_instrument_data,
     timeline_group_messages,
 )
+from midi2mkcd.utils.resources import blank_instrument_params_text
 from midi2mkcd.utils.strings import format_ranges
 
 __all__ = [
     "InstrumentUsage",
+    "blank_instrument_params_text",
     "check_params",
     "convert_replaced",
     "report",

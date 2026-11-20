@@ -1,7 +1,7 @@
 import io
 
 import pytest
-from helpers import FIXTURE_MIDI, GOLDEN, PACKAGE_ROOT
+from helpers import FIXTURE_MIDI, GOLDEN
 
 from midi2mkcd import (
     InstrumentParamsError,
@@ -12,7 +12,6 @@ from midi2mkcd import (
 from midi2mkcd.render import GENERATED_BY
 
 MIDI = FIXTURE_MIDI.read_bytes()
-BLANK_PARAMS = PACKAGE_ROOT.parent.parent / "examples" / "blank_instrument_params.yaml"
 
 VALID_MELODIC = """
   - instrument: {instrument}
@@ -42,7 +41,7 @@ def test_replacing_both_lists_melodics_then_drums() -> None:
 
 
 def test_allow_incomplete_loads_the_blank_params() -> None:
-    text = BLANK_PARAMS.read_text(encoding="utf-8")
+    text = tuning.blank_instrument_params_text()
     with pytest.raises(InstrumentParamsError):
         load_instrument_params(text)
     load_instrument_params(text, allow_incomplete=True)

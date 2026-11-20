@@ -29,7 +29,7 @@ def test_plain_hex_has_no_header() -> None:
     assert to_typescript(make_result(), "hex").startswith("hex`")
 
 
-@pytest.mark.parametrize("fmt", ["play", "visualizer"])
+@pytest.mark.parametrize("fmt", ["code", "code_extra"])
 def test_other_formats_have_the_header(fmt: str) -> None:
     out = to_typescript(make_result(), fmt)  # type: ignore[arg-type]
     assert out.splitlines()[0] == GENERATED_BY
@@ -52,7 +52,16 @@ def test_usage_report_table() -> None:
         InstrumentUsage("drum", 36, 4, 36, 36, 100, 100, False),
     ]
     assert usage_report(usages) == (
-        "kind     number  notes  range  velocity  mapped\n"
-        "melodic  0       14     53-67  60-100    yes\n"
-        "drum     36      4      36-36  100-100   NO"
+        "kind     number  name                  notes  range  velocity  mapped\n"
+        "melodic  0       Acoustic Grand Piano  14     53-67  60-100    yes\n"
+        "drum     36      Bass Drum 1           4      36-36  100-100   NO"
     )
+
+
+def test_usage_report_names_unknown_numbers() -> None:
+    usages = [
+        InstrumentUsage("melodic", 128, 1, 60, 60, 1, 1, False),
+        InstrumentUsage("drum", 20, 1, 20, 20, 1, 1, False),
+    ]
+    rows = usage_report(usages).splitlines()[1:]
+    assert [row.split()[2] for row in rows] == ["?", "?"]

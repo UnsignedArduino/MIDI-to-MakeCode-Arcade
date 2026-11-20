@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from midi2mkcd.arcade.music import encode_song_to_hex
 from midi2mkcd.utils.format import format_ts_str_array
+from midi2mkcd.utils.gm_names import drum_note_name, melodic_instrument_name
 
 if TYPE_CHECKING:
     from midi2mkcd.api import ConversionResult, OutputFormat
@@ -49,14 +50,14 @@ def to_typescript(result: ConversionResult, format: OutputFormat = "hex") -> str
     result has comments to show.
 
     :param result: The conversion result.
-    :param format: `"hex"`, `"play"` or `"visualizer"`.
+    :param format: `"hex"`, `"code"` or `"code_extra"`.
     :return: The generated code.
     """
     if format == "hex":
         body = _hex_literal(result)
-    elif format == "play":
+    elif format == "code":
         body = _play_statement(result)
-    elif format == "visualizer":
+    elif format == "code_extra":
         body = (
             f"const songHex = {_hex_literal(result)};\n"
             f"const midiDrumNoteMap: number[] = {result.drum_idx_to_midi_drum};\n"
@@ -103,11 +104,14 @@ def usage_report(usages: Sequence[InstrumentUsage]) -> str:
     :return: The table, one line per usage after a header line, with no trailing
      newline.
     """
-    headers = ("kind", "number", "notes", "range", "velocity", "mapped")
+    headers = ("kind", "number", "name", "notes", "range", "velocity", "mapped")
     rows = [
         (
             u.kind,
             str(u.number),
+            drum_note_name(u.number)
+            if u.kind == "drum"
+            else melodic_instrument_name(u.number),
             str(u.note_count),
             f"{u.lowest_note}-{u.highest_note}",
             f"{u.min_velocity}-{u.max_velocity}",

@@ -109,8 +109,8 @@ baseline") on the untouched code. What exists now:
   `write_text` on Windows without `newline="\n"`.
 - Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check
   src tests`, `uv run mypy src tests` all pass. (`ruff format --check .` also
-  flags this plan file's Python code blocks; ignore that, this file is not
-  committed.)
+  flags this plan file's Python code blocks; ignore that; pre-commit only
+  passes Python files to ruff.)
 
 These files are the regression baseline for everything below. Notes for the
 next steps:
@@ -119,8 +119,8 @@ next steps:
 - ~~When the YAML moves into `resources/` (step 4), update
   `helpers.INSTRUMENT_PARAMS` to point at the new location (do not keep a copy
   in `examples/`).~~ Done in `306633b`.
-- When the old CLI is deleted (step 6), delete `test_golden_cli.py`; the API
-  golden test replaces it.
+- ~~When the old CLI is deleted (step 6), delete `test_golden_cli.py`; the API
+  golden test replaces it.~~ Done in step 6 (`test_cli.py` covers the CLI).
 
 ## Logging cleanup — DONE
 
@@ -289,74 +289,98 @@ module"). This is item 5 in "Suggested commit order". What exists now:
 - Not done here: `__version__` (step 7 with the version bump), a test that the
   15k-note warning fires (no fixture is that big).
 
-**Next: step 6, the new `cli.py`** (see "CLI" and the `test_cli.py` bullet
-in "Tests"). Everything the CLI needs from the library already exists apart
-from the small renames below, so this step is mostly CLI code plus test
-changes. Pointers:
+## New CLI — DONE
 
-- Rewrite `src/midi2mkcd/cli.py` from scratch with three top-level
-  subcommands, two of which have their own subcommands:
-  - `convert` → `midi2mkcd.convert(path, params)` then
-    `result.to_typescript(args.format)` (default `"hex"`).
-  - `tune replace` → `tuning.convert_replaced(path, mapping, melodics=...,
-    drums=...)` then `to_typescript(args.format)` (default `"code"`).
-  - `tune sample --melodics R` → `tuning.sample_melodics`; `tune sample
-    --drums R` → `tuning.sample_drums`.
-  - `tune report` → `render.usage_report(tuning.report(...))`.
-  - `params show` → `default_instrument_params_text()`; `params show
-    --blank` → `blank_instrument_params_text()` (new, see below).
-  - `params check` → read the file **as text** and print each line of
-    `tuning.check_params`, exit 1 if any.
-- **Library renames in this step** (breaking, allowed):
-  - `OutputFormat` becomes `Literal["hex", "code", "code_extra"]` (was
-    `"play"` / `"visualizer"`). Update `api.py` and `render.py` (branches and
-    docstrings).
-  - `git mv` the goldens `play.ts` → `code.ts` and `visualizer.ts` →
-    `code_extra.ts` (contents unchanged); update `test_golden.py`.
-  - `git mv examples/blank_instrument_params.yaml
-    src/midi2mkcd/resources/blank_instrument_params.yaml`; add
-    `blank_instrument_params_text()` to `utils/resources.py` and re-export it
-    from `midi2mkcd.tuning`. Update `BLANK_PARAMS` in `test_tuning.py`.
-- `-p` becomes optional: read the file as text and pass it as `params`, or
-  pass `None` for the bundled default. For `--allow-incomplete`, load it
-  yourself with `load_instrument_params(text, allow_incomplete=True)` and
-  pass the mapping. Pass the input path straight through (a `Path` works).
-- Reuse from the current `cli.py`: `configure_logging` (idempotent; keep
-  that and **keep its current format**; `-v/--verbose` sets DEBUG, default
-  INFO) and `range_arg` (the argparse wrapper for `parse_range`). Library
-  warnings (such as the 15k-note one) already go through the logger, so the
-  CLI must not print `result.warnings` again.
-- Output, `--copy`, logging and exit statuses: see "CLI" → "Behaviour"
-  (`_emit` writes the text + one trailing newline to `-o` or stdout; no
-  leading blank line like the old `main.py`).
-- `--copy`: import `pyperclip` lazily inside that branch; if missing, exit
-  with a message naming the `optional` extra. `main.py` already has the
-  lazy-import pattern.
-- Catch `Midi2MkcdError` and `OSError` at the top of `main()`: print
-  `error: <message>` to stderr, exit 1 (re-raise under `-v`). Let anything
-  else traceback.
-- Delete `src/midi2mkcd/main.py` and `tests/integration/test_golden_cli.py`.
-  Change `__main__.py` (currently `from midi2mkcd.main import main`) to import
-  from `midi2mkcd.cli`, and `[project.scripts]` to
-  `midi2mkcd = "midi2mkcd.cli:main"`.
-- Add `tests/integration/test_cli.py` (call `cli.main(argv)` in-process):
-  `convert -o` matches `hex.ts`, `convert -f code` / `-f code_extra` match
-  their goldens, `tune replace --melodics 5` matches `replace.ts`,
-  `tune sample --melodics 0-2` matches `sample_0-2.ts`; stdout without `-o`
-  is exactly the text + `"\n"` with no log lines (use `capsys`); a garbage
-  MIDI file gives exit status 1 and `error:` on stderr; `params check` exits
-  0 for the bundled file. See also "Tests this adds to `test_cli.py`".
-- `test_import_hygiene.py` must still pass, so nothing in the package outside
-  `cli.py` may import `argparse` or `pyperclip`.
-- Update CLAUDE.md's Commands section (it shows the old `-i` / `-p` flags)
-  and the "Architecture" paragraph about `main.py` / `cli.py`. README updates
-  are step 7.
-- Line endings: the repo has `core.autocrlf=true`; Git warns "LF will be
-  replaced by CRLF" when staging new files. That is harmless. Goldens are
-  pinned LF by `.gitattributes` (the renamed ones keep that, the pattern is
-  `*.ts`).
-- Run all checks before committing: `uv run pytest`, `uv run ruff check .`,
-  `uv run ruff format --check src tests`, `uv run mypy src tests`.
+Committed as "Rewrite the CLI as subcommands on top of the library" (the
+commit after `f05a34e`; see `git log`) and pushed to `cli-refactor`. This is
+item 6 in "Suggested commit order". What exists now:
+
+- `src/midi2mkcd/cli.py` rewritten from scratch (~330 lines, over the 250
+  target because every help string is spelled out; the logic is small).
+  Commands, options, help text, exit statuses and errors are as in the "CLI"
+  section below, which has been updated to match the real output.
+  - `main(argv=None) -> int`; `build_parser()`; one `_run_*` per leaf;
+    `_read_params(path, *, allow_incomplete)`; `_emit(text, output, copy) ->
+    int`. `range_arg` and `configure_logging` (format unchanged, idempotent)
+    are kept.
+  - **Deviation:** shared options are added by small helper functions
+    (`_add_params`, `_add_output`, `_add_verbose`, `_add_tune_common`,
+    `_add_format`, `_add_input`) instead of `parents=[...]` parent parsers.
+    Parent-parser arguments are always added before a leaf's own arguments,
+    which would put `-f` after `-v` in the usage line; helpers keep the planned
+    order. Each option's full help text is shown everywhere (the "(as for
+    convert)" shorthand in the old plan help targets was dropped).
+  - A small `_HelpFormatter` (`RawDescriptionHelpFormatter` + keeps `\n` in
+    option help) so the `-f` help lists one format per line.
+  - `-v/--verbose` help says it also shows tracebacks for errors.
+  - `--copy` without pyperclip prints `error: --copy needs pyperclip: pip
+    install "midi2mkcd[optional]"` **after** writing the output, exit 1.
+  - **New, not in the old plan:** when stdout is not a console and is a
+    `TextIOWrapper`, `_emit` reconfigures it to UTF-8 before writing. On
+    Windows, redirected stdout defaulted to cp1252, which garbled `café`
+    and would crash on lyrics outside cp1252. `-o` files are always UTF-8.
+  - `params check` logs `No problems found` at INFO when clean.
+- `__main__.py` is `from midi2mkcd.cli import main` + `raise
+  SystemExit(main())`. `[project.scripts]` is `midi2mkcd =
+  "midi2mkcd.cli:main"` (checked in the built wheel's `entry_points.txt`).
+- Deleted `src/midi2mkcd/main.py` and `tests/integration/test_golden_cli.py`.
+- Library renames: `OutputFormat = Literal["hex", "code", "code_extra"]`
+  (`api.py`, `render.py` branches and docstrings). Goldens `git mv`ed:
+  `play.ts` → `code.ts`, `visualizer.ts` → `code_extra.ts` (contents
+  unchanged); `test_golden.py` and `test_render.py` updated.
+- `git mv examples/blank_instrument_params.yaml
+  src/midi2mkcd/resources/blank_instrument_params.yaml`.
+  `utils/resources.py` now has `blank_instrument_params_text()` next to
+  `default_instrument_params_text()` (shared `_resource_text(name)`); it is
+  re-exported from `midi2mkcd.tuning` (in its `__all__`), not the root.
+  `test_tuning.py` no longer has `BLANK_PARAMS`; it uses
+  `tuning.blank_instrument_params_text()`. The wheel contains both YAML files.
+- **New (user request): General MIDI names in `tune report`.**
+  `src/midi2mkcd/utils/gm_names.py` has `GM1_MELODIC_INSTRUMENT_NAMES` (tuple,
+  programs 0–127), `GM_DRUM_NOTE_NAMES` (dict, notes 27–87, GM2 ones suffixed
+  `(GM2)`), both from soundprogramming.net (URLs in the file), and
+  `melodic_instrument_name(n)` / `drum_note_name(n)`, which return `"?"`
+  outside those ranges. `render.usage_report` has a new `name` column after
+  `number`. `InstrumentUsage` is unchanged (the name is a display concern).
+  These names could also label `tune sample` songs later; not done.
+- Tests: `tests/integration/test_cli.py` (37 tests, in-process `main(argv)`):
+  every golden via `-o` (file = golden + `"\n"`), stdout = code + `"\n"` with
+  log lines only on stderr, `-v` adds DEBUG lines, `-p` file,
+  `--allow-incomplete` with the blank file on `tune report`, `tune report`
+  table, `tune sample --drums`, `params show [--blank]`, `params check`
+  (bundled → 0, blank → 1 with one line per problem), garbage MIDI and
+  missing input → exit 1 with `error:` and no traceback, `-v` re-raises,
+  `-h` for every command exits 0, `--version`, and exit 2 for every usage
+  error in "Tests this adds to `test_cli.py`". `test_render.py` gained a
+  name-column test (`?` for unknown numbers). 88 tests pass.
+- Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format
+  --check src tests`, `uv run mypy src tests` and `uv run pre-commit run
+  --all-files` all pass. Checked by hand:
+  every help screen, `uv run midi2mkcd ...` (the installed script), the
+  error messages, `--copy` without pyperclip (exit 1), and the UTF-8 lyric
+  through a pipe.
+- **Fixed a pre-existing pre-commit failure:** the mypy hook passes
+  filenames in batches, so mypy couldn't resolve `from helpers import ...` in
+  `tests/integration/*.py` (`Cannot find implementation or library stub for
+  module named "helpers"`). `[tool.mypy]` in `pyproject.toml` now sets
+  `mypy_path = "tests"`. `uv run pre-commit run --all-files` passes.
+- CLAUDE.md: Commands, the testing paragraph, the `-p` sentence and the
+  Architecture paragraph about `main.py` / `cli.py` are updated.
+
+**Next: step 7** (README, version bump, housekeeping). Pointers:
+
+- README: replace every old-flag command (`-i`, `--test-*`, `--debug`,
+  `--generate-extra-code`) with the new commands (see "Mapping from old
+  flags"); replace its help-text section (currently `usage: main.py ...`,
+  around line 157) with the new `midi2mkcd -h` / subcommand help; mention
+  `tune report` (with GM names), `params show/check`, that `-p` is optional,
+  and the Windows note under "CLI" → "Behaviour" (prefer `-o` in PowerShell
+  5.1). Add a short "Use as a library" section showing `convert()`. Fix links
+  to `examples/blank_instrument_params.yaml` (now in `resources/`) if any.
+- Bump `version` in `pyproject.toml` to `0.2.0` and add `__version__` to the
+  package root (then `cli._version()` may switch to it).
+- `requirements.txt`: delete if nothing references it, or regenerate.
+- Re-run all checks and tick the acceptance checklist.
 
 ## Target layout
 
@@ -367,24 +391,25 @@ src/midi2mkcd/
   tuning.py            # instrument-tuning tools (convert_replaced, sample_melodics); not re-exported
   render.py            # ALL TypeScript/text output generation
   errors.py            # exception hierarchy
-  cli.py               # argparse, file I/O, logging setup, clipboard. Nothing else.
-  __main__.py          # from midi2mkcd.cli import main; main()
+  cli.py               # argparse, file I/O, logging setup, clipboard. Nothing else. (DONE, step 6)
+  __main__.py          # from midi2mkcd.cli import main; raise SystemExit(main()) (DONE)
   resources/           # no __init__.py (DONE in 306633b)
     instrument_params.yaml   # moved from examples/instrument_params.yaml
-    blank_instrument_params.yaml   # moved from examples/ in step 6 (for `params show --blank`)
+    blank_instrument_params.yaml   # moved from examples/ (DONE, step 6; for `params show --blank`)
   midi_to_song/        # internals, kept in place
   arcade/              # internals, kept in place
   utils/
     strings.py         # parse_range no longer depends on argparse
     format.py
-    resources.py       # default_instrument_params_text() (DONE in 306633b), blank_instrument_params_text() (step 6)
+    resources.py       # default_instrument_params_text(), blank_instrument_params_text() (both DONE)
+    gm_names.py        # General MIDI instrument / drum note names for `tune report` (DONE, step 6)
 ```
 
-Delete `main.py`. (`utils/logger.py` is already deleted.) Update
-`[project.scripts]` to `midi2mkcd = "midi2mkcd.cli:main"`.
+`main.py` and `utils/logger.py` are deleted. `[project.scripts]` is
+`midi2mkcd = "midi2mkcd.cli:main"` (DONE, step 6).
 
 `instrument_params_2.yaml` stays in `examples/`.
-`blank_instrument_params.yaml` moves into `resources/` in step 6.
+`blank_instrument_params.yaml` is now in `resources/` (step 6).
 
 ## Public API
 
@@ -396,7 +421,7 @@ re-exported from the root.
 ```python
 # api.py
 
-OutputFormat = Literal["hex", "code", "code_extra"]   # was "play" / "visualizer" until step 6
+OutputFormat = Literal["hex", "code", "code_extra"]   # was "play" / "visualizer" before step 6
 
 def convert(
     midi: bytes | bytearray | memoryview | BinaryIO | os.PathLike[str] | str,
@@ -643,11 +668,12 @@ midi2mkcd params check [-p PARAMS] [-v]
 - `--version` prints `midi2mkcd <version>` from
   `importlib.metadata.version("midi2mkcd")` (works before step 7 adds
   `__version__`; switch to `__version__` then if preferred).
-- Shared options are defined once on parent parsers
-  (`ArgumentParser(add_help=False)`) and passed via `parents=[...]` to each
-  leaf subparser that takes them: `-v/--verbose`, `-p/--params`,
-  `-o/--output` + `--copy`, `--allow-incomplete`. So all options go **after
-  the last subcommand** (`midi2mkcd tune replace x.mid --melodics 5 -v`).
+- Shared options are defined once in helper functions (`_add_params`,
+  `_add_output`, `_add_verbose`, ...) called on each leaf subparser that
+  takes them: `-v/--verbose`, `-p/--params`, `-o/--output` + `--copy`,
+  `--allow-incomplete`. (Parent parsers were the original plan, but they add
+  their options before the leaf's own, which breaks the usage-line order.)
+  So all options go **after the last subcommand** (`midi2mkcd tune replace x.mid --melodics 5 -v`).
   Options before the first subcommand are only `-h` and `--version`.
 - `-f` is the short form of `--format`. CLI and library use the same names:
   - `hex`: a ``hex`...` `` literal.
@@ -663,8 +689,13 @@ midi2mkcd params check [-p PARAMS] [-v]
 
 ### `--help` text
 
-These are the targets for the help strings; argparse adds the usage line
-and option list formatting.
+These were the targets for the help strings. The implemented help (step 6)
+matches them in wording, except: argparse wraps usage lines at 80 columns,
+lists `-h, --help` and the `{convert,tune,params}` choice line, every option
+shows its full help instead of "(as for convert)", `-f` help ends with
+`Default: hex.` / `Default: code.`, `-v` says "Show debug logging on stderr,
+and tracebacks for errors.", and `tune report`'s description mentions the
+General MIDI names. Run `uv run midi2mkcd ... -h` for the real text.
 
 ```
 $ midi2mkcd -h
@@ -850,7 +881,8 @@ Almost everything is expressed in argparse itself:
     normal text files; the golden tests compare with `.rstrip("\n")` or read
     the goldens the same way, whichever keeps the goldens untouched.
   - no `-o`: `sys.stdout.write(text + "\n")`. Nothing else ever goes to
-    stdout.
+    stdout. If stdout is redirected (not a console), it is first reconfigured
+    to UTF-8 (step 6; Windows otherwise uses cp1252 for pipes and files).
   - `--copy`: lazy `import pyperclip` (after writing the output, so a missing
     pyperclip doesn't lose the result), copy `text` without the trailing
     newline, log `Copied to clipboard` at INFO. If the import fails:
@@ -903,12 +935,12 @@ Tuning loop: what does the song need, audition one instrument, compare a few:
 
 ```
 $ midi2mkcd tune report song.mid -p mine.yaml
-kind     number  notes  range  velocity  mapped
-melodic  0       14     53-67  60-100    yes
-melodic  48      3      48-55  80-80     NO
-drum     36      4      36-36  100-100   yes
-drum     38      4      38-38  100-100   yes
-drum     42      16     42-42  70-70     yes
+kind     number  name                  notes  range  velocity  mapped
+melodic  0       Acoustic Grand Piano  14     53-67  60-100    yes
+melodic  48      String Ensemble 1     3      48-55  80-80     NO
+drum     36      Bass Drum 1           4      36-36  100-100   yes
+drum     38      Snare Drum 1          4      38-38  100-100   yes
+drum     42      Closed Hi-hat         16     42-42  70-70     yes
 
 $ midi2mkcd tune replace song.mid -p mine.yaml --melodics 48 --copy -o tune.ts
 $ midi2mkcd tune replace song.mid -p mine.yaml --melodics 48 --drums 36 -f hex
@@ -916,8 +948,10 @@ $ midi2mkcd tune sample song.mid -p mine.yaml --melodics 40-47 --copy
 $ midi2mkcd tune sample song.mid -p mine.yaml --drums 35,36 --copy
 ```
 
-(The table reflects `render.usage_report` today; it is its real output for
-`tests/fixtures/fixture.mid` with program 48 marked unmapped.)
+(This is `render.usage_report`'s real output for `tests/fixtures/fixture.mid`
+with program 48 marked unmapped. The `name` column comes from
+`utils/gm_names.py`; numbers outside GM1 programs 0–127 or drum notes 27–87
+show `?`.)
 
 Params files:
 
@@ -1050,9 +1084,9 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
   and assert that `argparse` and `pyperclip` are not in `sys.modules`, that
   `midi2mkcd.tuning` is not imported by the root package, and that the
   `midi2mkcd` logger has only a `NullHandler`.
-- `tests/integration/test_cli.py`: `convert` with `-o` writes the same text
-  as `hex.ts`; without `-o`, stdout is exactly the generated code plus a
-  trailing newline and contains no log lines. Replaces
+- `tests/integration/test_cli.py` (DONE, step 6): `convert` with `-o` writes
+  the same text as `hex.ts`; without `-o`, stdout is exactly the generated
+  code plus a trailing newline and contains no log lines. Replaces
   `test_golden_cli.py`.
 - Unit tests for small pure pieces (e.g. `parse_range` raising `ValueError`,
   `render.py` header/comment logic) go in `tests/unit/`.
@@ -1081,25 +1115,26 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 5. ~~`api.py` + `tuning.py` + `render.py` + `ConversionResult`; golden tests
    switch to the API (and `tuning` for `replace.ts` / `sample_0-2.ts`).~~
    Done in `04060f5`.
-6. New `cli.py`, delete `main.py` and `test_golden_cli.py`, update entry point.
+6. ~~New `cli.py`, delete `main.py` and `test_golden_cli.py`, update entry point.~~
+   Done in "Rewrite the CLI as subcommands on top of the library".
 7. README, version bump, remaining tests.
 
 ## Acceptance checklist
 
-- [x] `from midi2mkcd import convert; convert(open("x.mid","rb").read()).to_typescript("play")` works with no other imports. (checked by hand, `04060f5`; `"code"` after step 6)
+- [x] `from midi2mkcd import convert; convert(open("x.mid","rb").read()).to_typescript("code")` works with no other imports. (checked by hand, `04060f5`; renamed from `"play"` in step 6)
 - [x] Golden tests pass (allowing only the two documented fixes). (`test_golden.py`, `04060f5`)
 - [x] `import midi2mkcd` pulls in neither `argparse` nor `pyperclip` and installs no log handlers. (`test_import_hygiene.py`, `04060f5`)
-- [ ] `midi2mkcd convert x.mid > out.ts` produces a file with no log lines in it.
+- [x] `midi2mkcd convert x.mid > out.ts` produces a file with no log lines in it. (`test_cli.py::test_stdout_is_only_the_code`, step 6)
 - [x] No `mido` type appears in any public signature. (`04060f5`)
 - [x] `convert()` takes no tuning arguments; replacement and sampling are only reachable through `midi2mkcd.tuning`, which the root package does not import. (`04060f5`)
-- [ ] `cli.py` contains no f-strings that build TypeScript. (True of the old `cli.py` since `04060f5`; keep it true in the step 6 rewrite.)
+- [x] `cli.py` contains no f-strings that build TypeScript. (step 6)
 - [x] The built wheel is `py3-none-any` and contains `midi2mkcd/resources/instrument_params.yaml` (already true as of `306633b`).
-- [ ] ruff, ruff format and mypy strict are clean. (Clean at `04060f5`; recheck at the end.)
+- [ ] ruff, ruff format and mypy strict are clean. (Clean after step 6, including `uv run pre-commit run --all-files`; recheck at the end.)
 
 ## Planned features (after this refactor)
 
-Not part of this task, but step 6 should leave room for them (see "What step
-6 should do now" at the end of this section). Suggested order:
+Not part of this task. Step 6 left room for them (see "What step 6 should
+do now" at the end of this section; all of it was followed). Suggested order:
 `recover-midi`, then the synthesizer with its validation harness, then
 `render` / `tune ... --wav`, then `params soundfont`, then `params fit`.
 

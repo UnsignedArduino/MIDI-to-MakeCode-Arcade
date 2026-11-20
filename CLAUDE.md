@@ -10,23 +10,29 @@ CLI tool (`midi2mkcd`) that converts a MIDI file into a MakeCode Arcade song: a 
 
 ```bash
 uv sync                                   # create venv + install deps (incl. dev group)
-uv run python -m midi2mkcd -i song.mid -p src/midi2mkcd/resources/instrument_params.yaml            # print buffer to stdout
-uv run python -m midi2mkcd -i song.mid -p src/midi2mkcd/resources/instrument_params.yaml -o out.ts  # write (overwrites)
-uv run python -m midi2mkcd ... --generate-extra-code   # extra TS for the Song-Visualizer project
-uv run python -m midi2mkcd ... --debug                 # debug logging
+uv run midi2mkcd convert song.mid                      # print the hex literal to stdout (bundled params)
+uv run midi2mkcd convert song.mid -p my.yaml -o out.ts # custom params; write (overwrites)
+uv run midi2mkcd convert song.mid -f code              # -f {hex,code,code_extra}; code_extra = Song-Visualizer consts
+uv run midi2mkcd tune report song.mid                  # instruments/drums used (GM names), ranges, params coverage
+uv run midi2mkcd tune replace song.mid --melodics 48   # every melodic note as program 48 (and/or --drums N)
+uv run midi2mkcd tune sample song.mid --melodics 40-47 # one program playing the song once per instrument
+uv run midi2mkcd params show [--blank] -o mine.yaml    # bundled params (or blank template)
+uv run midi2mkcd params check -p mine.yaml             # lint a params file; exit 1 on problems
+uv run midi2mkcd ... -v                                # debug logging (and tracebacks for errors)
+uv run pytest
 uv run ruff check .
 uv run ruff format .
-uv run mypy src                           # strict mode
+uv run mypy src tests                     # strict mode
 uv run pre-commit run --all-files         # ruff check, ruff format --check, mypy
 ```
 
-There is no test suite. Testing is manual: convert MIDI files and play the output in MakeCode Arcade. The `testing/` directory (gitignored) holds local sample MIDI files. The `--test-*` CLI flags help with tuning instruments: replacing every melodic or drum instrument, generating ready-to-run Arcade code, sampling a range of instruments, forcing a partial params file to load, and copying the result to the clipboard (needs the optional `pyperclip`). The README documents the workflows.
+`tests/` (pytest, `unit/` and `integration/` only) compares output against golden files in `tests/fixtures/golden/`, generated from `tests/fixtures/fixture.mid`. Listening is still manual: convert MIDI files and play the output in MakeCode Arcade. The `testing/` directory (gitignored) holds local sample MIDI files. The `tune` subcommands help with tuning instruments; `--allow-incomplete` loads a partial params file and `--copy` copies the result to the clipboard (needs the optional `pyperclip`).
 
-`-p` (instrument parameter YAML) is always required. `src/midi2mkcd/resources/instrument_params.yaml` is the hand-tuned reference and the bundled default (read via `utils/resources.py::default_instrument_params_text`, which uses `importlib.resources`); its header comment documents units (ms, amplitude 0-1024, Hz) and the waveform name → Arcade ID mapping.
+`-p` (instrument parameter YAML) is optional. `src/midi2mkcd/resources/instrument_params.yaml` is the hand-tuned reference and the bundled default (read via `utils/resources.py::default_instrument_params_text`, which uses `importlib.resources`); its header comment documents units (ms, amplitude 0-1024, Hz) and the waveform name → Arcade ID mapping.
 
 ## Architecture
 
-`main.py` handles the CLI, loads the MIDI file with `mido` and the YAML params with `midi_to_song/instruments.py`, then calls `cli.py` (`generate_single_conversion` / `generate_melodic_instrument_sample`). Those call `convert_midi_to_song` and turn the result into TypeScript text.
+The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/path + params YAML text or mapping → `ConversionResult`) is the public entry point, re-exported from the package root; `tuning.py` holds the instrument-tuning tools (replace, sample, report, check_params) and is not re-exported; `render.py` builds all TypeScript and report text; `errors.py` has the `Midi2MkcdError` hierarchy. `cli.py` only parses arguments (subcommands `convert`, `tune {replace,sample,report}`, `params {show,check}`), reads files, configures logging and calls one library function per command; `__main__.py` and the `midi2mkcd` script both run `cli.main`. `utils/gm_names.py` has the General MIDI instrument and drum note names.
 
 **`midi_to_song/__init__.py::convert_midi_to_song`** is the core pipeline. It runs a chain of `timeline_*` stages, each producing a new list of typed dataclasses from `midi_to_song/models.py` (the variables are named `global_timeline_0..8`):
 
