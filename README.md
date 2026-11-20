@@ -25,12 +25,13 @@ only available in beta.
 To convert the MIDI file `Never Gonna Give You Up.mid`:
 
 ```commandline
-uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml"
+uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "src/midi2mkcd/resources/instrument_params.yaml"
 ```
 
 This will print out the song buffer which you can paste into MakeCode Arcade.
 It will use [
-`example/instrument_params.yaml`](examples/instrument_params.yaml), which is an
+`instrument_params.yaml`](src/midi2mkcd/resources/instrument_params.yaml)
+(bundled with the package), which is an
 instrument parameter file that defines what each of the general MIDI 1's 128
 melodic instruments and standard drum kit sound like. An instrument parameter
 file is always required.
@@ -39,7 +40,7 @@ If the output is too big to easily copy from the terminal, use `-o` to write to
 a file: (this will **overwrite it**)
 
 ```commandline
-uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" -o "Never Gonna Give You Up.ts"
+uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "src/midi2mkcd/resources/instrument_params.yaml" -o "Never Gonna Give You Up.ts"
 ```
 
 If you would like to visualize your song output, you can import
@@ -47,7 +48,7 @@ https://github.com/UnsignedArduino/Song-Visualizer and replace the code at the
 top with the output of this command:
 
 ```commandline
-uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "example/instrument_params.yaml" --generate-extra-code
+uv run python -m midi2mkcd -i "Never Gonna Give You Up.mid" -p "src/midi2mkcd/resources/instrument_params.yaml" --generate-extra-code
 ```
 
 The `--generate-extra-code` flag will write out extra information that the
@@ -99,9 +100,9 @@ Features:
 ### Defining your own instrument parameter file
 
 If you would like to create your own instrument parameter file, you can look at
-[`instrument_params.yaml`](examples/instrument_params.yaml) in the
-[`example`](examples) directory, which was tuned by me, to see what the YAML
-format looks like.
+[`instrument_params.yaml`](src/midi2mkcd/resources/instrument_params.yaml)
+(the bundled default), which was tuned by me, to see what the YAML format looks
+like. In the [`examples`](examples) directory,
 [`instrument_params_2.yaml`](examples/instrument_params_2.yaml) was generated
 completely by Claude and sounds interesting.
 
@@ -126,7 +127,7 @@ substitute `-p` with the file you are working on.
 not have all instruments defined yet.
 
 ```commandline
-uv run python -m midi2mkcd -i "basic_test.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-melodics-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
+uv run python -m midi2mkcd -i "basic_test.mid" -p "src/midi2mkcd/resources/instrument_params.yaml" --test-ask-to-replace-all-melodics-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
 ```
 
 `--test-sample-melodic-instruments` will replace the melodic instruments in the
@@ -135,7 +136,7 @@ instruments in a family together. Use commas to separate what you want (e.g.
 `1,2,4-6` -> [1, 2, 4, 5, 6]).
 
 ```commandline
-uv run python -m midi2mkcd -i "basic_test.mid" -p "example/instrument_params.yaml" --test-sample-melodic-instruments "3-6" --test-force-instrument-param-load --debug
+uv run python -m midi2mkcd -i "basic_test.mid" -p "src/midi2mkcd/resources/instrument_params.yaml" --test-sample-melodic-instruments "3-6" --test-force-instrument-param-load --debug
 ```
 
 #### Defining drum notes
@@ -147,7 +148,7 @@ prompt you to replace all the drum instruments in a MIDI file with a drum note
 (27-87).
 
 ```commandline
-uv run python -m midi2mkcd -i "testing/basic_test_3/basic_test_3.mid" -p "example/instrument_params.yaml" --test-ask-to-replace-all-drums-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
+uv run python -m midi2mkcd -i "testing/basic_test_3/basic_test_3.mid" -p "src/midi2mkcd/resources/instrument_params.yaml" --test-ask-to-replace-all-drums-with --test-generate-code --test-force-instrument-param-load --test-copy-result-to-clipboard --debug
 ```
 
 ### Help text

@@ -10,8 +10,8 @@ CLI tool (`midi2mkcd`) that converts a MIDI file into a MakeCode Arcade song: a 
 
 ```bash
 uv sync                                   # create venv + install deps (incl. dev group)
-uv run python -m midi2mkcd -i song.mid -p examples/instrument_params.yaml            # print buffer to stdout
-uv run python -m midi2mkcd -i song.mid -p examples/instrument_params.yaml -o out.ts  # write (overwrites)
+uv run python -m midi2mkcd -i song.mid -p src/midi2mkcd/resources/instrument_params.yaml            # print buffer to stdout
+uv run python -m midi2mkcd -i song.mid -p src/midi2mkcd/resources/instrument_params.yaml -o out.ts  # write (overwrites)
 uv run python -m midi2mkcd ... --generate-extra-code   # extra TS for the Song-Visualizer project
 uv run python -m midi2mkcd ... --debug                 # debug logging
 uv run ruff check .
@@ -22,7 +22,7 @@ uv run pre-commit run --all-files         # ruff check, ruff format --check, myp
 
 There is no test suite. Testing is manual: convert MIDI files and play the output in MakeCode Arcade. The `testing/` directory (gitignored) holds local sample MIDI files. The `--test-*` CLI flags help with tuning instruments: replacing every melodic or drum instrument, generating ready-to-run Arcade code, sampling a range of instruments, forcing a partial params file to load, and copying the result to the clipboard (needs the optional `pyperclip`). The README documents the workflows.
 
-`-p` (instrument parameter YAML) is always required. `examples/instrument_params.yaml` is the hand-tuned reference; its header comment documents units (ms, amplitude 0-1024, Hz) and the waveform name → Arcade ID mapping.
+`-p` (instrument parameter YAML) is always required. `src/midi2mkcd/resources/instrument_params.yaml` is the hand-tuned reference and the bundled default (read via `utils/resources.py::default_instrument_params_text`, which uses `importlib.resources`); its header comment documents units (ms, amplitude 0-1024, Hz) and the waveform name → Arcade ID mapping.
 
 ## Architecture
 

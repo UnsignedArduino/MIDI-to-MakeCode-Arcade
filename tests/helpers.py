@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
+PACKAGE_ROOT = Path(__file__).parent.parent / "src" / "midi2mkcd"
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE_MIDI = FIXTURES / "fixture.mid"
 GOLDEN = FIXTURES / "golden"
-# The hand-tuned params the goldens were generated with
-INSTRUMENT_PARAMS = Path(__file__).parent.parent / "examples" / "instrument_params.yaml"
+# The hand-tuned params the goldens were generated with (the bundled default)
+INSTRUMENT_PARAMS = PACKAGE_ROOT / "resources" / "instrument_params.yaml"
