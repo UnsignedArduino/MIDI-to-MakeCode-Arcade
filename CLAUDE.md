@@ -26,6 +26,8 @@ uv run mypy src tests                     # strict mode
 uv run pre-commit run --all-files         # ruff check, ruff format --check, mypy
 ```
 
+GitHub Actions (`.github/workflows/`) runs on pushes to `main` and on every PR: `lint.yaml` (ruff check, ruff format --check, mypy, all on `.`), and `unit.yaml` / `integration.yaml` (`pytest -m unit` / `-m integration` on Ubuntu, Windows and macOS). A PR's last commit message can skip a test tier with `[skip-unit-tests]`, `[no-integration]`, `[skip-tests]` and similar (see `check-skip.yaml`); pushes to `main` always run everything.
+
 `tests/` (pytest, `unit/` and `integration/` only) compares output against golden files in `tests/fixtures/golden/`, generated from `tests/fixtures/fixture.mid`. Listening is still manual: convert MIDI files and play the output in MakeCode Arcade. The `testing/` directory (gitignored) holds local sample MIDI files. The `tune` subcommands help with tuning instruments; `--allow-incomplete` loads a partial params file and `--copy` copies the result to the clipboard (needs the optional `pyperclip`).
 
 `-p` (instrument parameter YAML) is optional. `src/midi2mkcd/resources/instrument_params.yaml` is the hand-tuned reference and the bundled default (read via `utils/resources.py::default_instrument_params_text`, which uses `importlib.resources`); its header comment documents units (ms, amplitude 0-1024, Hz) and the waveform name → Arcade ID mapping.
