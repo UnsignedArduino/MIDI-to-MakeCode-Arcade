@@ -16,7 +16,7 @@ build in this task):
 await micropip.install("midi2mkcd");
 const m = pyodide.pyimport("midi2mkcd");
 const result = m.convert(pyodide.toPy(midiBytes));        // bundled default params
-const ts = result.to_typescript("visualizer");
+const ts = result.to_typescript("code_extra");
 ```
 
 Breaking changes to CLI flags, module paths and function names are all
@@ -290,33 +290,45 @@ module"). This is item 5 in "Suggested commit order". What exists now:
   15k-note warning fires (no fixture is that big).
 
 **Next: step 6, the new `cli.py`** (see "CLI" and the `test_cli.py` bullet
-in "Tests"). Everything the CLI needs from the library already exists, so
-this step should be CLI code plus test changes only. Pointers:
+in "Tests"). Everything the CLI needs from the library already exists apart
+from the small renames below, so this step is mostly CLI code plus test
+changes. Pointers:
 
-- Rewrite `src/midi2mkcd/cli.py` from scratch with three subcommands
-  (`convert`, `tune`, `params`). What it calls:
+- Rewrite `src/midi2mkcd/cli.py` from scratch with three top-level
+  subcommands, two of which have their own subcommands:
   - `convert` → `midi2mkcd.convert(path, params)` then
-    `result.to_typescript(args.format)`.
-  - `tune` → `tuning.convert_replaced(path, mapping, melodics=..., drums=...)`
-    then `to_typescript(args.format)` (default `"play"`);
-    `--sample-melodics` → `tuning.sample_melodics`; `--sample-drums` →
-    `tuning.sample_drums`; `--report` → `render.usage_report(tuning.report(...))`.
-  - `params` → print `default_instrument_params_text()`; `params --check` →
-    read the file **as text** and print each line of `tuning.check_params`,
-    exit 1 if any. Decide whether `--blank` stays (see "CLI" details: only if
-    `blank_instrument_params.yaml` moves into `resources/`).
+    `result.to_typescript(args.format)` (default `"hex"`).
+  - `tune replace` → `tuning.convert_replaced(path, mapping, melodics=...,
+    drums=...)` then `to_typescript(args.format)` (default `"code"`).
+  - `tune sample --melodics R` → `tuning.sample_melodics`; `tune sample
+    --drums R` → `tuning.sample_drums`.
+  - `tune report` → `render.usage_report(tuning.report(...))`.
+  - `params show` → `default_instrument_params_text()`; `params show
+    --blank` → `blank_instrument_params_text()` (new, see below).
+  - `params check` → read the file **as text** and print each line of
+    `tuning.check_params`, exit 1 if any.
+- **Library renames in this step** (breaking, allowed):
+  - `OutputFormat` becomes `Literal["hex", "code", "code_extra"]` (was
+    `"play"` / `"visualizer"`). Update `api.py` and `render.py` (branches and
+    docstrings).
+  - `git mv` the goldens `play.ts` → `code.ts` and `visualizer.ts` →
+    `code_extra.ts` (contents unchanged); update `test_golden.py`.
+  - `git mv examples/blank_instrument_params.yaml
+    src/midi2mkcd/resources/blank_instrument_params.yaml`; add
+    `blank_instrument_params_text()` to `utils/resources.py` and re-export it
+    from `midi2mkcd.tuning`. Update `BLANK_PARAMS` in `test_tuning.py`.
 - `-p` becomes optional: read the file as text and pass it as `params`, or
-  pass `None` for the bundled default. For `tune --allow-incomplete`, load it
+  pass `None` for the bundled default. For `--allow-incomplete`, load it
   yourself with `load_instrument_params(text, allow_incomplete=True)` and
   pass the mapping. Pass the input path straight through (a `Path` works).
 - Reuse from the current `cli.py`: `configure_logging` (idempotent; keep
-  that, `-v/--verbose` sets DEBUG, default INFO) and `range_arg` (the
-  argparse wrapper for `parse_range`). Library warnings (such as the 15k-note
-  one) already go through the logger, so the CLI must not print
-  `result.warnings` again.
-- Output, `--copy`, logging format and exit statuses: see "CLI" →
-  "Behaviour" (`_emit` writes code + one trailing newline to `-o` or stdout;
-  no leading blank line like the old `main.py`).
+  that and **keep its current format**; `-v/--verbose` sets DEBUG, default
+  INFO) and `range_arg` (the argparse wrapper for `parse_range`). Library
+  warnings (such as the 15k-note one) already go through the logger, so the
+  CLI must not print `result.warnings` again.
+- Output, `--copy`, logging and exit statuses: see "CLI" → "Behaviour"
+  (`_emit` writes the text + one trailing newline to `-o` or stdout; no
+  leading blank line like the old `main.py`).
 - `--copy`: import `pyperclip` lazily inside that branch; if missing, exit
   with a message naming the `optional` extra. `main.py` already has the
   lazy-import pattern.
@@ -327,15 +339,13 @@ this step should be CLI code plus test changes only. Pointers:
   Change `__main__.py` (currently `from midi2mkcd.main import main`) to import
   from `midi2mkcd.cli`, and `[project.scripts]` to
   `midi2mkcd = "midi2mkcd.cli:main"`.
-- Add `tests/integration/test_cli.py` (call `cli.main(argv)` in-process, or
-  patch `sys.argv` like the old golden test): `convert -o` matches `hex.ts`,
-  `--format play` / `visualizer` match their goldens, `tune --melodics 5`
-  matches `replace.ts`, `tune --sample-melodics 0-2` matches `sample_0-2.ts`;
-  stdout without `-o` is exactly code + `"
-"` with no log lines (use
-  `capsys`); a garbage MIDI file gives exit status 1 and `error:` on stderr;
-  `params --check` exits 0 for the bundled file. Giving `main()` an optional
-  `argv: list[str] | None = None` parameter makes these easy.
+- Add `tests/integration/test_cli.py` (call `cli.main(argv)` in-process):
+  `convert -o` matches `hex.ts`, `convert -f code` / `-f code_extra` match
+  their goldens, `tune replace --melodics 5` matches `replace.ts`,
+  `tune sample --melodics 0-2` matches `sample_0-2.ts`; stdout without `-o`
+  is exactly the text + `"\n"` with no log lines (use `capsys`); a garbage
+  MIDI file gives exit status 1 and `error:` on stderr; `params check` exits
+  0 for the bundled file. See also "Tests this adds to `test_cli.py`".
 - `test_import_hygiene.py` must still pass, so nothing in the package outside
   `cli.py` may import `argparse` or `pyperclip`.
 - Update CLAUDE.md's Commands section (it shows the old `-i` / `-p` flags)
@@ -343,7 +353,8 @@ this step should be CLI code plus test changes only. Pointers:
   are step 7.
 - Line endings: the repo has `core.autocrlf=true`; Git warns "LF will be
   replaced by CRLF" when staging new files. That is harmless. Goldens are
-  pinned LF by `.gitattributes`.
+  pinned LF by `.gitattributes` (the renamed ones keep that, the pattern is
+  `*.ts`).
 - Run all checks before committing: `uv run pytest`, `uv run ruff check .`,
   `uv run ruff format --check src tests`, `uv run mypy src tests`.
 
@@ -360,19 +371,20 @@ src/midi2mkcd/
   __main__.py          # from midi2mkcd.cli import main; main()
   resources/           # no __init__.py (DONE in 306633b)
     instrument_params.yaml   # moved from examples/instrument_params.yaml
+    blank_instrument_params.yaml   # moved from examples/ in step 6 (for `params show --blank`)
   midi_to_song/        # internals, kept in place
   arcade/              # internals, kept in place
   utils/
     strings.py         # parse_range no longer depends on argparse
     format.py
-    resources.py       # default_instrument_params_text() (DONE in 306633b)
+    resources.py       # default_instrument_params_text() (DONE in 306633b), blank_instrument_params_text() (step 6)
 ```
 
 Delete `main.py`. (`utils/logger.py` is already deleted.) Update
 `[project.scripts]` to `midi2mkcd = "midi2mkcd.cli:main"`.
 
-`blank_instrument_params.yaml` and `instrument_params_2.yaml` stay in
-`examples/`.
+`instrument_params_2.yaml` stays in `examples/`.
+`blank_instrument_params.yaml` moves into `resources/` in step 6.
 
 ## Public API
 
@@ -384,7 +396,7 @@ re-exported from the root.
 ```python
 # api.py
 
-OutputFormat = Literal["hex", "play", "visualizer"]
+OutputFormat = Literal["hex", "code", "code_extra"]   # was "play" / "visualizer" until step 6
 
 def convert(
     midi: bytes | bytearray | memoryview | BinaryIO | os.PathLike[str] | str,
@@ -542,8 +554,8 @@ Move all output construction here, as pure functions of a `ConversionResult`:
 | `format`       | Output                                                              | Was                          |
 | -------------- | ------------------------------------------------------------------- | ---------------------------- |
 | `"hex"`        | ``hex`...` `` literal                                               | default                      |
-| `"play"`       | `music.play(music.createSong(hex`...`), music.PlaybackMode.UntilDone);` | `--test-generate-code`   |
-| `"visualizer"` | `songHex`, `midiDrumNoteMap`, `trackInstrumentMap`, `lyricTicks`, `lyricTexts` consts | `--generate-extra-code` |
+| `"code"`       | `music.play(music.createSong(hex`...`), music.PlaybackMode.UntilDone);` | `--test-generate-code`   |
+| `"code_extra"` | `songHex`, `midiDrumNoteMap`, `trackInstrumentMap`, `lyricTicks`, `lyricTexts` consts | `--generate-extra-code` |
 
 Also here: the "Generated by ..." header, the `result.comments` lines (which
 carry the "melodics/drums replaced with" text from `tuning`), and the
@@ -601,40 +613,53 @@ class SongConstraintError(Midi2MkcdError): ...     # song cannot fit Arcade's fo
 ## CLI
 
 Rewrite `cli.py` from scratch as roughly: parse args, read files, call the
-API, write output. Target well under 200 lines (the help strings are most of
+API, write output. Target well under 250 lines (the help strings are most of
 it).
 
 ### Shape
 
+Every mode is its own subcommand. The only option that chooses between
+output variants is `-f`.
+
 ```
 midi2mkcd [-h] [--version] {convert,tune,params} ...
 
-midi2mkcd convert INPUT [-p PARAMS] [-o OUT] [-f {hex,play,visualizer}] [--copy] [-v]
+midi2mkcd convert INPUT [-f {hex,code,code_extra}] [-p PARAMS] [-o OUT] [--copy] [-v]
 
-midi2mkcd tune INPUT [-p PARAMS] [-o OUT] [--allow-incomplete] [--copy] [-v]
-                     [-f {hex,play,visualizer}] [--melodics N] [--drums N]
-                     [--sample-melodics RANGE | --sample-drums RANGE | --report]
+midi2mkcd tune replace INPUT [--melodics N] [--drums N] [-f {hex,code,code_extra}] COMMON
+midi2mkcd tune sample  INPUT (--melodics RANGE | --drums RANGE)                    COMMON
+midi2mkcd tune report  INPUT                                                       COMMON
+    COMMON: [-p PARAMS] [--allow-incomplete] [-o OUT] [--copy] [-v]
 
-midi2mkcd params [-o OUT] [-v]                  # print the bundled default YAML
-midi2mkcd params --check [-p PARAMS] [-v]       # lint a params file (default: bundled)
+midi2mkcd params show  [--blank] [-o OUT] [-v]
+midi2mkcd params check [-p PARAMS] [-v]
 ```
 
-- A subcommand is required (`add_subparsers(required=True)`). Bare
-  `midi2mkcd` prints usage and exits 2. There is no implicit `convert`
-  (`midi2mkcd song.mid` is a usage error); keeping argparse plain matters
-  more than saving one word.
+- A subcommand is required at every level (`add_subparsers(required=True)`
+  for the top level, `tune` and `params`). Bare `midi2mkcd`, `midi2mkcd tune`
+  and `midi2mkcd params` print usage and exit 2. There is no implicit
+  `convert` (`midi2mkcd song.mid` is a usage error); keeping argparse plain
+  matters more than saving one word.
 - `--version` prints `midi2mkcd <version>` from
   `importlib.metadata.version("midi2mkcd")` (works before step 7 adds
   `__version__`; switch to `__version__` then if preferred).
-- `-v/--verbose` and `-p/--params` are defined once on a parent parser
+- Shared options are defined once on parent parsers
   (`ArgumentParser(add_help=False)`) and passed via `parents=[...]` to each
-  subparser that takes them, so they go **after** the subcommand
-  (`midi2mkcd convert x.mid -v`). Options before the subcommand are only
-  `-h` and `--version`.
-- `-f` is the short form of `--format`.
-- `--blank` is dropped: `blank_instrument_params.yaml` stays in `examples/`
-  (see "Target layout"), and `params` plus `--allow-incomplete` covers the
-  "start from something" case.
+  leaf subparser that takes them: `-v/--verbose`, `-p/--params`,
+  `-o/--output` + `--copy`, `--allow-incomplete`. So all options go **after
+  the last subcommand** (`midi2mkcd tune replace x.mid --melodics 5 -v`).
+  Options before the first subcommand are only `-h` and `--version`.
+- `-f` is the short form of `--format`. CLI and library use the same names:
+  - `hex`: a ``hex`...` `` literal.
+  - `code`: a statement that plays the song in Arcade (was `play`).
+  - `code_extra`: constants for the Song-Visualizer project (was
+    `visualizer`).
+- `-o` always means "write this command's output here". Every leaf has it
+  except `params check`, which only reports problems.
+- `--copy` is on `convert` and every `tune` subcommand (for `tune report` it
+  copies the table). Not on `params`.
+- `--allow-incomplete` is on every `tune` subcommand. With no `-p` it does
+  nothing (the bundled file is complete) and is allowed.
 
 ### `--help` text
 
@@ -649,7 +674,7 @@ Convert a MIDI file to a MakeCode Arcade song.
 
 commands:
   convert   Convert a MIDI file to Arcade code.
-  tune      Tools for writing and auditioning instrument parameter files.
+  tune      Tools for auditioning instrument parameters against a song.
   params    Print or check instrument parameter files.
 
 Run 'midi2mkcd COMMAND -h' for a command's options.
@@ -657,7 +682,7 @@ Run 'midi2mkcd COMMAND -h' for a command's options.
 
 ```
 $ midi2mkcd convert -h
-usage: midi2mkcd convert [-h] [-p PARAMS] [-o OUT] [-f {hex,play,visualizer}] [--copy] [-v] INPUT
+usage: midi2mkcd convert [-h] [-f {hex,code,code_extra}] [-p PARAMS] [-o OUT] [--copy] [-v] INPUT
 
 Convert a MIDI file to a MakeCode Arcade song.
 
@@ -665,100 +690,160 @@ positional arguments:
   INPUT                 MIDI file to convert.
 
 options:
-  -p, --params PARAMS   Instrument parameter YAML file. Default: the bundled
-                        parameters (see 'midi2mkcd params').
-  -o, --output OUT      Write the code to this file (UTF-8, overwritten if it
-                        exists). Default: stdout.
-  -f, --format {hex,play,visualizer}
+  -f, --format {hex,code,code_extra}
                         hex: a hex`...` literal (default).
-                        play: a statement that plays the song in Arcade.
-                        visualizer: constants for the Song-Visualizer project.
-  --copy                Also copy the code to the clipboard (needs the
+                        code: a statement that plays the song in Arcade.
+                        code_extra: constants for the Song-Visualizer project.
+  -p, --params PARAMS   Instrument parameter YAML file. Default: the bundled
+                        parameters (see 'midi2mkcd params show').
+  -o, --output OUT      Write the output to this file (UTF-8, overwritten if
+                        it exists). Default: stdout.
+  --copy                Also copy the output to the clipboard (needs the
                         'optional' extra: pip install "midi2mkcd[optional]").
   -v, --verbose         Show debug logging on stderr.
 ```
 
 ```
 $ midi2mkcd tune -h
-usage: midi2mkcd tune [-h] [-p PARAMS] [-o OUT] [--allow-incomplete] [--copy] [-v]
-                      [-f {hex,play,visualizer}] [--melodics N] [--drums N]
-                      [--sample-melodics RANGE | --sample-drums RANGE | --report]
-                      INPUT
+usage: midi2mkcd tune [-h] {replace,sample,report} ...
 
-Instrument tuning tools. Without a mode option, converts INPUT with the
-replacements below and outputs code that plays it (--format play).
+Tools for auditioning instrument parameters against a song.
+
+commands:
+  replace   Convert the song with every melodic and/or drum instrument replaced.
+  sample    Play the song once per instrument in a range.
+  report    List the instruments and drum notes the song uses.
+```
+
+```
+$ midi2mkcd tune replace -h
+usage: midi2mkcd tune replace [-h] [--melodics N] [--drums N] [-f {hex,code,code_extra}]
+                              [-p PARAMS] [--allow-incomplete] [-o OUT] [--copy] [-v] INPUT
+
+Convert INPUT with every melodic note played by one program and/or every drum
+note played as one drum note. Give at least one of --melodics and --drums.
 
 positional arguments:
   INPUT                 MIDI file to tune against.
 
 options:
+  --melodics N          Play every melodic note with MIDI program N.
+  --drums N             Play every drum note as MIDI drum note N.
+  -f, --format {hex,code,code_extra}
+                        As for convert. Default: code.
   -p, --params PARAMS   (as for convert)
-  -o, --output OUT      (as for convert)
   --allow-incomplete    Skip incomplete or invalid entries in the params file
                         instead of failing. Songs that use a skipped
                         instrument still fail.
+  -o, --output OUT      (as for convert)
   --copy, -v            (as for convert)
+```
 
-replacement (default mode):
-  -f, --format {hex,play,visualizer}
-                        Output format. Default: play.
-  --melodics N          Play every melodic note with MIDI program N.
-  --drums N             Play every drum note as MIDI drum note N.
+```
+$ midi2mkcd tune sample -h
+usage: midi2mkcd tune sample [-h] (--melodics RANGE | --drums RANGE)
+                             [-p PARAMS] [--allow-incomplete] [-o OUT] [--copy] [-v] INPUT
 
-other modes (pick one; they ignore the replacement options):
-  --sample-melodics RANGE
-                        One program that plays the song once per program in
-                        RANGE, e.g. "0,2,4-10".
-  --sample-drums RANGE  Same, once per drum note in RANGE, e.g. "35-40".
-  --report              Print a table of the instruments and drum notes the
-                        song uses, their note and velocity ranges, and
-                        whether PARAMS has an entry for each.
+Output one Arcade program that plays INPUT once per instrument in RANGE, each
+time with every melodic note (or every drum note) replaced by that instrument.
+
+positional arguments:
+  INPUT                 MIDI file to tune against.
+
+options:
+  --melodics RANGE      MIDI programs to sample, e.g. "0,2,4-10".
+  --drums RANGE         MIDI drum notes to sample, e.g. "35-40".
+  -p, --allow-incomplete, -o, --copy, -v
+                        (as for tune replace)
+```
+
+```
+$ midi2mkcd tune report -h
+usage: midi2mkcd tune report [-h] [-p PARAMS] [--allow-incomplete] [-o OUT] [--copy] [-v] INPUT
+
+Print a table of the instruments and drum notes INPUT uses, their note and
+velocity ranges, and whether PARAMS has an entry for each.
+
+positional arguments:
+  INPUT                 MIDI file to report on.
+
+options:
+  -p, --allow-incomplete, -o, --copy, -v
+                        (as for tune replace)
 ```
 
 ```
 $ midi2mkcd params -h
-usage: midi2mkcd params [-h] [-o OUT] [-p PARAMS] [--check] [-v]
+usage: midi2mkcd params [-h] {show,check} ...
 
-Without --check, print the bundled instrument parameters, as a starting point
-for your own file.
+Print or check instrument parameter files.
+
+commands:
+  show      Print the bundled instrument parameters (or a blank template).
+  check     Lint an instrument parameter file.
+```
+
+```
+$ midi2mkcd params show -h
+usage: midi2mkcd params show [-h] [--blank] [-o OUT] [-v]
+
+Print the bundled instrument parameters, as a starting point for your own
+file.
 
 options:
+  --blank               Print a blank template instead.
   -o, --output OUT      Write the YAML here instead of stdout.
-  --check               Lint PARAMS (default: the bundled file) and print one
-                        problem per line. Exit status 1 if there are any.
-  -p, --params PARAMS   File for --check.
+  -v, --verbose         Show debug logging on stderr.
+```
+
+```
+$ midi2mkcd params check -h
+usage: midi2mkcd params check [-h] [-p PARAMS] [-v]
+
+Lint an instrument parameter file and print one problem per line. Exit
+status 1 if there are any.
+
+options:
+  -p, --params PARAMS   File to check. Default: the bundled parameters.
   -v, --verbose         Show debug logging on stderr.
 ```
 
 ### Option rules
 
-Checked after `parse_args` with `parser.error(...)` (exit 2, usage line, then
-`midi2mkcd tune: error: ...`), because argparse groups can't express
-"exclusive with a whole other group":
+Almost everything is expressed in argparse itself:
 
-- `tune`: `--sample-melodics` / `--sample-drums` / `--report` are an argparse
-  mutually exclusive group. If one is given together with `--format`,
-  `--melodics` or `--drums`: `error: --report cannot be combined with
-  --format/--melodics/--drums`. To detect an explicit `--format`, give it
-  `default=None` and fill in `"play"` after the check.
-- `params`: `-p` without `--check` is an error (`-p is only used with
-  --check`); `-o` with `--check` is an error.
-- `--allow-incomplete` with no `-p` is allowed (the bundled file is complete,
-  so it does nothing).
-- `--copy` works in every `convert` / `tune` mode, including `--report` (it
-  copies the table). Not on `params`.
-- `-o` works in every mode except `params --check`.
+- `tune sample`: `--melodics` / `--drums` are an
+  `add_mutually_exclusive_group(required=True)`, both with
+  `type=range_arg`.
+- `tune replace`: needs at least one of `--melodics` / `--drums` (both
+  together is fine, as today). argparse can't express "at least one", so check
+  after `parse_args` and call **that subparser's** `error(...)` (exit 2, its
+  usage line, then `midi2mkcd tune replace: error: give --melodics, --drums
+  or both`). Store the subparser with `set_defaults(parser=...)` so `main()`
+  can reach it. `-f` defaults to `"code"` here.
+- No other cross-option checks are needed.
 
 ### Behaviour
 
 - **Params loading.** `-p PATH` → `Path.read_text(encoding="utf-8")` and pass
   the text as `params` (so `check_params` sees duplicates and errors say
-  "YAML" not "file"). With `tune --allow-incomplete`, call
+  "YAML" not "file"). With `--allow-incomplete`, call
   `load_instrument_params(text, allow_incomplete=True)` and pass the mapping.
   No `-p` → `params=None`.
 - **Input.** Pass the `Path` straight to the library (it reads the bytes and
   logs "Reading MIDI file from ...").
-- **Output.** One helper, `_emit(text, output, copy)`, used by every mode:
+- **`params show`.** Emits `default_instrument_params_text()`, or with
+  `--blank`, `blank_instrument_params_text()`. For that, step 6 moves
+  `examples/blank_instrument_params.yaml` to
+  `src/midi2mkcd/resources/blank_instrument_params.yaml` and adds
+  `blank_instrument_params_text()` next to the default one in
+  `utils/resources.py`. Re-export it from `midi2mkcd.tuning` (not the package
+  root), since it is a tuning aid.
+- **`params check`.** Reads `-p` as text (or uses the bundled text), prints
+  each line of `tuning.check_params(...)` to stdout, exits 1 if there are
+  any.
+- **Output.** One helper, `_emit(text, output, copy)`, used by every leaf
+  except `params check`:
   - `-o OUT`: `OUT.write_text(text + "\n", encoding="utf-8")`, then log
     `Wrote OUT` at INFO. Parent directories must exist (an `OSError`
     otherwise; see errors). Adding the final newline makes files end like
@@ -772,30 +857,22 @@ Checked after `parse_args` with `parser.error(...)` (exit 2, usage line, then
     `error: --copy needs pyperclip: pip install "midi2mkcd[optional]"`, exit 1.
 - **Windows note for the README (step 7).** In Windows PowerShell 5.1, `>`
   writes UTF-16, which Arcade won't accept as pasted text and other tools
-  misread. Recommend `-o` over redirection; that's also why `params` has
+  misread. Recommend `-o` over redirection; that's also why `params show` has
   `-o`.
 - **Logging.** `configure_logging(logging.DEBUG if args.verbose else
-  logging.INFO)`, idempotent as today. Change the format to
-  `"%(levelname)s: %(message)s"` by default and keep the current
-  `"%(asctime)s - %(name)s - %(levelname)s - %(message)s"` for `-v`, so a
-  normal run's stderr is short:
-
-  ```
-  INFO: Reading MIDI file from song.mid
-  INFO: Wrote song.ts
-  ```
-
-  `configure_logging` takes the format as a second argument (or picks it from
-  the level). The 15k-note warning arrives as `WARNING: ...` from the
-  library's logger; the CLI does not print `result.warnings` itself.
+  logging.INFO)`, idempotent as today. **Keep the current format,
+  `"%(asctime)s - %(name)s - %(levelname)s - %(message)s"`, for every run**
+  (it matches the user's other Python projects). `-v` changes only the level.
+  The 15k-note warning arrives as a WARNING line from the library's logger;
+  the CLI does not print `result.warnings` itself.
 - **Errors and exit status.** `main(argv: list[str] | None = None) -> int`.
   `[project.scripts]` wraps it in `sys.exit(main())`; `__main__.py` does
   `raise SystemExit(main())`.
 
   | Status | When |
   | ------ | ---- |
-  | 0 | success; `params --check` found nothing |
-  | 1 | `Midi2MkcdError` or `OSError` (missing input/params file, unwritable `-o`): `error: <message>` on stderr, no traceback; `params --check` found problems; `--copy` without pyperclip |
+  | 0 | success; `params check` found nothing |
+  | 1 | `Midi2MkcdError` or `OSError` (missing input/params file, unwritable `-o`): `error: <message>` on stderr, no traceback; `params check` found problems; `--copy` without pyperclip |
   | 2 | usage error (argparse) |
   | traceback | anything else, including the `RuntimeError` "(please report)" invariants |
 
@@ -807,14 +884,15 @@ Checked after `parse_args` with `parser.error(...)` (exit 2, usage line, then
 
 ### Example sessions
 
-Normal conversion (stdout is only the code, stderr only log lines):
+Normal conversion (stdout is only the code, stderr only log lines; logger
+names and timestamps are illustrative):
 
 ```
 $ midi2mkcd convert song.mid -o song.ts
-INFO: Reading MIDI file from song.mid
-INFO: Wrote song.ts
+2026-11-20 14:03:12,345 - midi2mkcd.api - INFO - Reading MIDI file from song.mid
+2026-11-20 14:03:12,512 - midi2mkcd.cli - INFO - Wrote song.ts
 
-$ midi2mkcd convert song.mid -f play --copy 2>/dev/null
+$ midi2mkcd convert song.mid -f code --copy 2>/dev/null
 // Generated by https://github.com/UnsignedArduino/MIDI-to-MakeCode-Arcade
 music.play(music.createSong(
   hex`0078000418020300...`
@@ -824,7 +902,7 @@ music.play(music.createSong(
 Tuning loop: what does the song need, audition one instrument, compare a few:
 
 ```
-$ midi2mkcd tune song.mid -p mine.yaml --report
+$ midi2mkcd tune report song.mid -p mine.yaml
 kind     number  notes  range  velocity  mapped
 melodic  0       14     53-67  60-100    yes
 melodic  48      3      48-55  80-80     NO
@@ -832,20 +910,21 @@ drum     36      4      36-36  100-100   yes
 drum     38      4      38-38  100-100   yes
 drum     42      16     42-42  70-70     yes
 
-$ midi2mkcd tune song.mid -p mine.yaml --melodics 48 --copy -o tune.ts
-$ midi2mkcd tune song.mid -p mine.yaml --sample-melodics 40-47 --copy
-$ midi2mkcd tune song.mid -p mine.yaml --sample-drums 35,36 --copy
+$ midi2mkcd tune replace song.mid -p mine.yaml --melodics 48 --copy -o tune.ts
+$ midi2mkcd tune replace song.mid -p mine.yaml --melodics 48 --drums 36 -f hex
+$ midi2mkcd tune sample song.mid -p mine.yaml --melodics 40-47 --copy
+$ midi2mkcd tune sample song.mid -p mine.yaml --drums 35,36 --copy
 ```
 
-(`--report` reflects `render.usage_report` today; the table above is its
-real output for `tests/fixtures/fixture.mid` with program 48 marked
-unmapped.)
+(The table reflects `render.usage_report` today; it is its real output for
+`tests/fixtures/fixture.mid` with program 48 marked unmapped.)
 
 Params files:
 
 ```
-$ midi2mkcd params -o mine.yaml
-$ midi2mkcd params --check -p mine.yaml
+$ midi2mkcd params show -o mine.yaml
+$ midi2mkcd params show --blank -o blank.yaml
+$ midi2mkcd params check -p mine.yaml
 Invalid melodic instrument entry (instrument 1): missing field 'waveform'
 No entry for melodic instruments 3, 7-9
 $ echo $?
@@ -856,13 +935,16 @@ Errors:
 
 ```
 $ midi2mkcd convert notes.txt
-INFO: Reading MIDI file from notes.txt
+2026-11-20 14:05:01,002 - midi2mkcd.api - INFO - Reading MIDI file from notes.txt
 error: Could not parse MIDI file notes.txt: EOFError()
 $ midi2mkcd convert song.mid -p broken.yaml
 error: Invalid melodic instrument entry (instrument 3): missing field 'amp_envelope'
-$ midi2mkcd tune song.mid --report --melodics 5
-usage: midi2mkcd tune [-h] ...
-midi2mkcd tune: error: --report cannot be combined with --format/--melodics/--drums
+$ midi2mkcd tune replace song.mid
+usage: midi2mkcd tune replace [-h] ...
+midi2mkcd tune replace: error: give --melodics, --drums or both
+$ midi2mkcd tune sample song.mid --melodics 0-2 --drums 36
+usage: midi2mkcd tune sample [-h] ...
+midi2mkcd tune sample: error: argument --drums: not allowed with argument --melodics
 ```
 
 ### Code layout
@@ -871,23 +953,27 @@ midi2mkcd tune: error: --report cannot be combined with --format/--melodics/--dr
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    _check_option_rules(parser, args)        # parser.error on conflicts
-    configure_logging(...)
+    if args.handler is _run_tune_replace and args.melodics is None and args.drums is None:
+        args.parser.error("give --melodics, --drums or both")
+    configure_logging(logging.DEBUG if args.verbose else logging.INFO)
     try:
-        return args.handler(args)            # set_defaults(handler=...) per subparser
+        return args.handler(args)            # set_defaults(handler=..., parser=...) per leaf
     except (Midi2MkcdError, OSError) as e:
         if args.verbose:
             raise
         print(f"error: {e}", file=sys.stderr)
         return 1
 
-def build_parser() -> ArgumentParser: ...    # all add_argument calls
+def build_parser() -> ArgumentParser: ...    # all add_argument calls, parent parsers
 def _run_convert(args: Namespace) -> int: ...
-def _run_tune(args: Namespace) -> int: ...
-def _run_params(args: Namespace) -> int: ...
+def _run_tune_replace(args: Namespace) -> int: ...
+def _run_tune_sample(args: Namespace) -> int: ...
+def _run_tune_report(args: Namespace) -> int: ...
+def _run_params_show(args: Namespace) -> int: ...
+def _run_params_check(args: Namespace) -> int: ...
 def _read_params(path: Path | None, *, allow_incomplete: bool) -> str | InstrumentParameterMapping | None: ...
 def _emit(text: str, output: Path | None, copy: bool) -> None: ...
-# kept from the current cli.py: range_arg, configure_logging
+# kept from the current cli.py: range_arg, configure_logging (format unchanged)
 ```
 
 Every `_run_*` is a few lines: resolve params, call one library function,
@@ -900,26 +986,29 @@ Every `_run_*` is a few lines: resolve params, call one library function,
 | `--input/-i` (required)                     | positional `INPUT`                   |
 | `--input-instrument-params/-p` (required)   | `-p/--params`, optional, default bundled |
 | `--output/-o`                               | unchanged                            |
-| `--generate-extra-code`                     | `convert --format visualizer`        |
-| `--test-generate-code`                      | `--format play` (default for `tune`) |
-| `--test-sample-melodic-instruments R`       | `tune --sample-melodics R`           |
-| (new)                                       | `tune --sample-drums R`, `tune --report`, `params`, `params --check`, `--version` |
-| `--test-replace-all-melodics-with N`        | `tune --melodics N`                  |
-| `--test-replace-all-drums-with N`           | `tune --drums N`                     |
+| `--generate-extra-code`                     | `convert -f code_extra`              |
+| `--test-generate-code`                      | `-f code` (the default for `tune replace`) |
+| `--test-replace-all-melodics-with N`        | `tune replace --melodics N`          |
+| `--test-replace-all-drums-with N`           | `tune replace --drums N`             |
+| `--test-sample-melodic-instruments R`       | `tune sample --melodics R`           |
 | `--test-ask-to-replace-all-*-with`          | removed (use the flags above)        |
-| `--test-force-instrument-param-load`        | `tune --allow-incomplete`            |
+| `--test-force-instrument-param-load`        | `tune ... --allow-incomplete`        |
 | `--test-copy-result-to-clipboard`           | `--copy`                             |
 | `--debug`                                   | `-v/--verbose`                       |
+| (new)                                       | `tune sample --drums`, `tune report`, `params show [--blank]`, `params check`, `--version` |
 
 ### Tests this adds to `test_cli.py`
 
-Beyond the bullet in "Tests" and the step 6 pointers above: `-h` for each
-subcommand exits 0; `tune --report --melodics 5` exits 2; `params -p x`
-without `--check` exits 2; a missing input file exits 1 with `error:` and no
-`Traceback` on stderr; `params` stdout equals
-`default_instrument_params_text()` plus `"\n"`; `params --check` on
-`examples/blank_instrument_params.yaml` exits 1 and prints one line per
-problem; `--report` stdout matches `render.usage_report(tuning.report(...))`.
+Beyond the bullet in "Tests" and the step 6 pointers above: `-h` for every
+command and subcommand exits 0; bare `midi2mkcd`, `midi2mkcd tune` and
+`midi2mkcd params` exit 2; `tune replace` with neither `--melodics` nor
+`--drums` exits 2; `tune sample` with both `--melodics` and `--drums` exits
+2; `params check -o x` exits 2 (no such option); a missing input file exits 1
+with `error:` and no `Traceback` on stderr; `params show` stdout equals
+`default_instrument_params_text()` plus `"\n"`; `params show --blank` stdout
+equals `blank_instrument_params_text()` plus `"\n"`; `params check` on the
+blank file exits 1 and prints one line per problem; `tune report` stdout
+matches `render.usage_report(tuning.report(...))`.
 
 ## Tests
 
@@ -929,8 +1018,9 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 - `tests/integration/test_golden.py`: for each golden file, call the new API
   (not the CLI) with `tests/fixtures/fixture.mid` as **bytes** and the bundled
   default params, and compare to the golden text exactly. `hex.ts`,
-  `play.ts` and `visualizer.ts` come from `convert()`; `replace.ts` from
-  `tuning.convert_replaced(..., melodics=5).to_typescript("play")`;
+  `code.ts` and `code_extra.ts` (renamed from `play.ts` / `visualizer.ts` in
+  step 6, contents unchanged) come from `convert()`; `replace.ts` from
+  `tuning.convert_replaced(..., melodics=5).to_typescript("code")`;
   `sample_0-2.ts` from `tuning.sample_melodics(..., [0, 1, 2])`.
 - `tests/integration/test_api.py`:
   - `convert()` accepts bytes, `BytesIO`, and a path, with identical results.
@@ -942,9 +1032,10 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 - `tests/integration/test_tuning.py`:
   - `convert_replaced(..., melodics=0)` includes the replacement comment
     (the `is not None` fix).
-  - `load_instrument_params(..., allow_incomplete=True)` on
-    `examples/blank_instrument_params.yaml` loads; without it, it raises
-    `InstrumentParamsError`.
+  - `load_instrument_params(..., allow_incomplete=True)` on the blank params
+    file loads; without it, it raises `InstrumentParamsError`. (`BLANK_PARAMS`
+    points at `examples/` today; step 6 switches it to
+    `blank_instrument_params_text()` / the `resources/` path.)
   - `sample_drums(..., [36, 38])` returns a program with two songs, each
     labelled with its drum note (structure checks, no golden).
   - `report()` on the fixture lists exactly melodic programs 0 and 48 and
@@ -995,7 +1086,7 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 
 ## Acceptance checklist
 
-- [x] `from midi2mkcd import convert; convert(open("x.mid","rb").read()).to_typescript("play")` works with no other imports. (checked by hand, `04060f5`)
+- [x] `from midi2mkcd import convert; convert(open("x.mid","rb").read()).to_typescript("play")` works with no other imports. (checked by hand, `04060f5`; `"code"` after step 6)
 - [x] Golden tests pass (allowing only the two documented fixes). (`test_golden.py`, `04060f5`)
 - [x] `import midi2mkcd` pulls in neither `argparse` nor `pyperclip` and installs no log handlers. (`test_import_hygiene.py`, `04060f5`)
 - [ ] `midi2mkcd convert x.mid > out.ts` produces a file with no log lines in it.
@@ -1008,43 +1099,51 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 ## Planned features (after this refactor)
 
 Not part of this task, but step 6 should leave room for them (see "What step
-6 should do now" at the end of this section). Suggested order: `decode`, then
-the synthesizer with its validation harness, then `render` / `tune --wav`,
-then `soundfont`, then `fit`.
+6 should do now" at the end of this section). Suggested order:
+`recover-midi`, then the synthesizer with its validation harness, then
+`render` / `tune ... --wav`, then `params soundfont`, then `params fit`.
 
 ### Target CLI
 
 ```
-midi2mkcd convert   INPUT.mid [-p] [-o OUT] [-f {hex,play,visualizer}] [--copy]
-midi2mkcd render    INPUT [-p] -o OUT.wav [--rate 44100] [--index N]  # INPUT: .mid, or .ts/.txt containing hex`...`
-midi2mkcd decode    INPUT [-p PARAMS] -o OUT.mid [--index N]          # Arcade song -> MIDI
-midi2mkcd tune      INPUT.mid ... [--wav OUT.wav]                     # audition without opening Arcade
-midi2mkcd params    [-o OUT] | --check [-p]
-midi2mkcd soundfont [-p PARAMS] -o OUT.sf2 [--notes RANGE] [--step N] [--rate N]
-midi2mkcd fit       TARGET.sf2 --program N [-p BASE] -o OUT.yaml [--layers 1|2]   # stretch goal
+midi2mkcd convert      INPUT.mid [-f {hex,code,code_extra}] [-p PARAMS] [-o OUT] [--copy]
+midi2mkcd render       INPUT [-p PARAMS] -o OUT.wav [--rate 44100]   # INPUT: .mid, or .ts/.txt with one hex`...`
+midi2mkcd recover-midi INPUT [-p PARAMS] -o OUT.mid                  # Arcade song -> MIDI (lossy)
+
+midi2mkcd tune replace INPUT.mid ... [--wav OUT.wav]                 # audition without opening Arcade
+midi2mkcd tune sample  INPUT.mid ... [--wav OUT.wav]
+midi2mkcd tune report  INPUT.mid ...
+
+midi2mkcd params show      [--blank] [-o OUT]
+midi2mkcd params check     [-p PARAMS]
+midi2mkcd params soundfont [-p PARAMS] -o OUT.sf2 [--notes RANGE] [--step N] [--rate N]
+midi2mkcd params fit       TARGET.sf2 --program N [-p BASE] -o OUT.yaml [--layers 1|2]   # stretch goal
 ```
 
 - `-f` stays text formats only. Binary outputs (WAV, MIDI, SF2) get their
   own subcommands or flags; never infer a format from the `-o` extension.
-- Binary outputs need `-o`. Refuse to write binary to stdout when it is a
-  terminal (or always require `-o`; simpler).
-- Hex input: a helper that reads a `.ts`/`.txt` file and pulls out the
-  `hex\`...\`` literal(s). A sampler file holds several songs: error unless
-  `--index N` picks one. A visualizer file is recognised by its
-  `songHex` / `trackInstrumentMap` consts (see `decode`).
-- `tune --wav OUT.wav` renders whatever the tune mode would have produced
-  (a replaced song, or the sampler's songs one after another with a short gap)
-  so the tuning loop no longer needs a paste into Arcade. Probably the biggest
-  win of all these features.
+- Binary outputs always require `-o` (never written to stdout).
+- Hex input (`render`, `recover-midi`): a helper that reads a `.ts`/`.txt`
+  file and pulls out the `hex\`...\`` literal. **Single song only for now:**
+  if the file has no literal or more than one (e.g. a `tune sample` output),
+  raise a `Midi2MkcdError` that says how many it found. No `--index`. A
+  `code_extra` file is recognised by its `songHex` / `trackInstrumentMap`
+  consts (see `recover-midi`).
+- `tune replace ... --wav OUT.wav` / `tune sample ... --wav OUT.wav` render
+  what the subcommand would have produced (a replaced song, or the sampler's
+  songs one after another with a short gap) so the tuning loop no longer
+  needs a paste into Arcade. The sampler case renders the `ConversionResult`s
+  directly, so the single-song rule for hex input doesn't apply. Probably the
+  biggest win of all these features.
 
 ### Library layout
 
-| Module           | Contents                                                                 | Dependencies          |
-| ---------------- | ------------------------------------------------------------------------ | --------------------- |
-| `decode.py`      | `song_to_midi(...) -> bytes`, hex/visualizer text extraction              | mido only             |
-| `audio.py`       | `instructions(song)` (port of the TS song → instruction stage), `synthesize(...) -> np.ndarray`, `to_wav_bytes(...) -> bytes` | numpy |
-| `soundfont.py`   | SF2 (RIFF) writer, per-note rendering via `convert()` + `audio`           | numpy                 |
-| `tuning/fit.py`  | the parameter optimizer (`tuning.py` becomes a package)                  | numpy + `cma` or scipy |
+| Module             | Contents                                                                 | Dependencies          |
+| ------------------ | ------------------------------------------------------------------------ | --------------------- |
+| `recover_midi.py`  | `song_to_midi(...) -> bytes`, hex/`code_extra` text extraction            | mido only             |
+| `audio.py`         | `instructions(song)` (port of the TS song → instruction stage), `synthesize(...) -> np.ndarray`, `to_wav_bytes(...) -> bytes` | numpy |
+| `soundfont.py`     | SF2 (RIFF) writer, per-note rendering via `convert()` + `audio`           | numpy                 |
+| `tuning/fit.py`    | the parameter optimizer (`tuning.py` becomes a package)                  | numpy + `cma` or scipy |
 
 - numpy goes in an `audio` extra, `cma`/scipy in a `fit` extra. Import them
   lazily. Extend `test_import_hygiene.py`: `import midi2mkcd` must not import
@@ -1053,21 +1152,22 @@ midi2mkcd fit       TARGET.sf2 --program N [-p BASE] -o OUT.yaml [--layers 1|2] 
 - Return bytes (`to_wav_bytes`, `song_to_midi`) so the web page can wrap them
   in a `Blob` directly. WAV writing uses the stdlib `wave` module.
 
-### `decode`: Arcade song → MIDI
+### `recover-midi`: Arcade song → MIDI
 
-An escape hatch, explicitly lossy, not something to round-trip through.
+An escape hatch, explicitly lossy, not something to round-trip through (the
+name says so; the shorter alternative was `to-midi`).
 `arcade/music.py::decode_song_from_hex` already parses the buffer; the work
 is undoing the pipeline. It takes either a plain hex literal or a
-**visualizer** file, and the visualizer file makes it much better:
+**`code_extra`** file, and the `code_extra` file makes it much better:
 
-| Information        | Plain hex + exact params file                                  | Visualizer file                                   |
+| Information        | Plain hex + exact params file                                  | `code_extra` file                                 |
 | ------------------ | -------------------------------------------------------------- | ------------------------------------------------- |
 | Melodic program    | Match each track's embedded `Instrument` against the params entries. Identical entries are ambiguous: pick the lowest program, log it. | `trackInstrumentMap[track]` (exact; `-1` = drum track) |
 | Drum notes         | Match each embedded drum against the params' drum entries (same ambiguity rule). | `midiDrumNoteMap[drumIdx]` (exact; the drum index is global across drum tracks) |
 | Lyrics             | Lost                                                           | `lyricTicks` / `lyricTexts` → MIDI lyric meta events |
 | Velocity           | Undo pitch compensation using the params' `melodic_pitch_comp_k` | Same; needs `-p` for k (see below)                |
 
-- With a visualizer file, `-p` is optional. Pitch compensation scales
+- With a `code_extra` file, `-p` is optional. Pitch compensation scales
   **velocity** (not pitch) by note: `velocity * 2 ** (-(note - ref) / 12 * k)`
   with `ref = 60 - 11 - 12`, then rounded and clamped to 1–127. Undo it by
   dividing when k is known (from `-p`, or the bundled default's k if `-p` is
@@ -1082,10 +1182,11 @@ is undoing the pipeline. It takes either a plain hex literal or a
   else a fixed default.
 - Channels: drums on channel 10; melodic programs on the other 15, reusing
   channels with program changes (or a second port) if there are more.
-- Tests: `decode(convert(fixture).to_typescript("visualizer"))` recovers
-  programs 0 and 48, drum notes 36/38/42 and the lyrics; the plain-hex path
-  recovers the same programs with the bundled params; note starts match the
-  fixture within one song tick.
+- Tests: `song_to_midi(convert(fixture).to_typescript("code_extra"))`
+  recovers programs 0 and 48, drum notes 36/38/42 and the lyrics; the
+  plain-hex path recovers the same programs with the bundled params; note
+  starts match the fixture within one song tick; a `tune sample` output is
+  rejected as multi-song.
 
 ### Synthesizer and `render` (WAV preview)
 
@@ -1110,11 +1211,13 @@ source before starting** and record the file paths here):
   waveform, envelope/LFO cases, each drum type), record them from the
   simulator by hand into `testing/` (gitignored), and compare spectrograms
   and RMS envelopes. Expect several "slightly off" rounds.
-- `render` accepts a MIDI file (converts first, with `-p`) or Arcade hex.
+- `render` accepts a MIDI file (converts first, with `-p`) or a file with
+  exactly one Arcade hex literal (see "Target CLI").
 
-### `soundfont`: params → SF2
+### `params soundfont`: params → SF2
 
-Lets the user hear Arcade-ish instruments in a MIDI editor.
+Lets the user hear Arcade-ish instruments in a MIDI editor. Lives under
+`params` because it exports a params file, not a song.
 
 - Render each note by building a one-note song and running it through the
   real `convert()` pipeline, then `audio`, so the pitch shift, pitch
@@ -1130,7 +1233,7 @@ Lets the user hear Arcade-ish instruments in a MIDI editor.
 - No maintained Python SF2 writer to rely on; the RIFF layout is a few
   hundred lines to write by hand.
 
-### `fit`: optimize params toward a real instrument (stretch goal)
+### `params fit`: optimize params toward a real instrument (stretch goal)
 
 - Target: samples from a GM SoundFont at a few notes, velocities and
   durations (read from the SF2, or rendered with FluidSynth).
@@ -1153,7 +1256,9 @@ Lets the user hear Arcade-ish instruments in a MIDI editor.
 - Keep `-f` text-only and `_emit` text-only; add a separate bytes writer
   (`_emit_bytes(data, output)`) only when the first binary command lands.
 - Keep `INPUT` handling per subcommand (don't assume every command takes
-  MIDI), so `render` / `decode` can accept hex input.
+  MIDI), so `render` / `recover-midi` can accept hex input.
+- Build `tune` and `params` as subcommand groups so `tune ... --wav`,
+  `params soundfont` and `params fit` slot in without reshaping anything.
 - Nothing else; don't add placeholder subcommands.
 
 ## Later (not part of this task)
@@ -1186,11 +1291,11 @@ public API.
   variants: list[Instrument]) -> str` plays the same passage once per variant
   of one instrument's parameters, plus a helper like `sweep(base,
   "amp_envelope.attack", [5, 20, 50])` to build the variants. CLI:
-  something like `tune --variants alt.yaml`.
+  something like `tune variants INPUT --melodics N alt.yaml`.
 - **Solo.** `convert_replaced(..., only=[40])` (or a separate `solo()`) drops
   every other track so one instrument's real part can be heard on its own
   without the rest of the mix.
-- **Watch mode (CLI only).** `midi2mkcd tune ... --watch --copy` re-runs the
+- **Watch mode (CLI only).** `midi2mkcd tune replace ... --watch --copy` re-runs the
   conversion whenever the params YAML is saved and copies the result to the
   clipboard, so the loop is edit → save → paste into Arcade. A polling loop in
   `cli.py`; no library change.
