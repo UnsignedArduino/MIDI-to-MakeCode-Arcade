@@ -1,3 +1,4 @@
+import io
 import logging
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from midi2mkcd.cli import (
     generate_single_conversion,
     generate_testing_options,
 )
+from midi2mkcd.errors import InvalidMidiError
 from midi2mkcd.midi_to_song.instruments import load_instrument_params
 
 try:
@@ -50,7 +52,13 @@ def main() -> None:
     input_path = Path(args.input)
     logger.info(f"Reading MIDI file from {input_path}")
 
-    mid = MidiFile(input_path)
+    midi_bytes = input_path.read_bytes()
+    try:
+        mid = MidiFile(file=io.BytesIO(midi_bytes))
+    except Exception as e:
+        # mido raises many exception types for malformed data (OSError, EOFError,
+        # KeyError, ValueError...); file access errors were already raised above
+        raise InvalidMidiError(f"Could not parse MIDI file {input_path}: {e!r}") from e
     logger.debug(f"Found {len(mid.tracks)} tracks, length of {mid.length}s")
 
     input_instrument_param_path = Path(args.input_instrument_params)
