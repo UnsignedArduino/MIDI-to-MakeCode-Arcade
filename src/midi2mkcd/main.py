@@ -1,99 +1,60 @@
-import io
 import logging
 from pathlib import Path
 
-from mido import MidiFile
-
-from midi2mkcd.cli import (
-    configure_logging,
-    generate_and_parse_args,
-    generate_melodic_instrument_sample,
-    generate_single_conversion,
-    generate_testing_options,
-)
-from midi2mkcd.errors import InvalidMidiError
-from midi2mkcd.midi_to_song.instruments import load_instrument_params
-
-try:
-    import pyperclip
-
-    CLIPBOARD_AVAILABLE = True
-except ImportError, ModuleNotFoundError:
-    CLIPBOARD_AVAILABLE = False
+from midi2mkcd import tuning
+from midi2mkcd.api import OutputFormat, convert, load_instrument_params
+from midi2mkcd.cli import configure_logging, generate_and_parse_args
 
 logger = logging.getLogger(__name__)
 
 
+# Old CLI, kept working on top of the new API until the CLI rewrite replaces it.
 def main() -> None:
     args = generate_and_parse_args()
     configure_logging(args.debug)
     logger.debug(f"Received arguments: {args}")
-    logger.warning(
-        "As of August 2026, long or dense songs may crash the MakeCode Arcade "
-        "simulator, where it seems like the WebAudio playback leaks memory per note. "
-    )
-    logger.warning(
-        "The limit is not a fixed note count - it depends on the game's overall memory "
-        "use (sprites, arrays, etc.), the browser, and how many notes the page session "
-        "has already played."
-    )
-    logger.warning("Reloading the simulator page resets it.")
-    logger.warning(
-        "This warning is printed regardless of the song being converted, "
-        "but in testing, songs with 24k+ notes have been found to crash the "
-        "simulator on the first play (so a song with 15k note "
-        "events played twice may also crash the simulator)."
-    )
 
-    (testing_opts_for_load_instrument_params, testing_opts_for_midi_to_song) = (
-        generate_testing_options(args)
-    )
-
-    input_path = Path(args.input)
-    logger.info(f"Reading MIDI file from {input_path}")
-
-    midi_bytes = input_path.read_bytes()
-    try:
-        mid = MidiFile(file=io.BytesIO(midi_bytes))
-    except Exception as e:
-        # mido raises many exception types for malformed data (OSError, EOFError,
-        # KeyError, ValueError...); file access errors were already raised above
-        raise InvalidMidiError(f"Could not parse MIDI file {input_path}: {e!r}") from e
-    logger.debug(f"Found {len(mid.tracks)} tracks, length of {mid.length}s")
-
-    input_instrument_param_path = Path(args.input_instrument_params)
-    logger.info(
-        f"{'Forcibly reading' if testing_opts_for_load_instrument_params.force_load else 'Reading'}"
-        f" instrument params from {input_instrument_param_path}"
-    )
-
-    mapping = load_instrument_params(
-        input_instrument_param_path.read_text(), testing_opts_for_load_instrument_params
-    )
-    logger.debug(
-        f"Mapped {len(mapping.melodic_instruments)} melodic instruments and "
-        f"{len(mapping.drum_instruments)} drum instruments"
-    )
-
-    melodic_sample = args.test_sample_melodic_instruments
-    generate_extra_code = args.generate_extra_code
-    if melodic_sample and generate_extra_code:
+    if args.test_sample_melodic_instruments and args.generate_extra_code:
         raise ValueError(
             "Melodic sample option and generating extra code are mutually exclusive!"
         )
-    if testing_opts_for_midi_to_song.generate_code and generate_extra_code:
+    if args.test_generate_code and args.generate_extra_code:
         raise ValueError(
             "Generating sample code and generating extra code are mutually exclusive!"
         )
 
-    if melodic_sample is not None:
-        final_output = generate_melodic_instrument_sample(
-            mid, mapping, testing_opts_for_midi_to_song, melodic_sample
+    replace_melodics: int | None = args.test_replace_all_melodics_with
+    replace_drums: int | None = args.test_replace_all_drums_with
+    if args.test_ask_to_replace_all_melodics_with:
+        replace_melodics = int(input("Replace all melodics with MIDI instrument: "))
+    if args.test_ask_to_replace_all_drums_with:
+        replace_drums = int(input("Replace all drums with MIDI drum note: "))
+
+    params_path = Path(args.input_instrument_params)
+    logger.info(f"Reading instrument params from {params_path}")
+    mapping = load_instrument_params(
+        params_path.read_text(encoding="utf-8"),
+        allow_incomplete=args.test_force_instrument_param_load,
+    )
+
+    input_path = Path(args.input)
+    if args.test_sample_melodic_instruments is not None:
+        final_output = tuning.sample_melodics(
+            input_path, args.test_sample_melodic_instruments, mapping
         )
     else:
-        final_output = generate_single_conversion(
-            mid, mapping, generate_extra_code, testing_opts_for_midi_to_song
-        )
+        fmt: OutputFormat = "hex"
+        if args.test_generate_code:
+            fmt = "play"
+        elif args.generate_extra_code:
+            fmt = "visualizer"
+        if replace_melodics is not None or replace_drums is not None:
+            result = tuning.convert_replaced(
+                input_path, mapping, melodics=replace_melodics, drums=replace_drums
+            )
+        else:
+            result = convert(input_path, mapping)
+        final_output = result.to_typescript(fmt)
 
     output_path = Path(args.output) if args.output is not None else None
     if output_path is not None:
@@ -104,11 +65,13 @@ def main() -> None:
         print(f"\n{final_output}\n")
 
     if args.test_copy_result_to_clipboard:
-        if not CLIPBOARD_AVAILABLE:
+        try:
+            import pyperclip
+        except ImportError:
             raise RuntimeError(
-                "pyperclip is not available (pip install pyperclip), cannot "
+                "pyperclip is not available (install the 'optional' extra), cannot "
                 "automatically copy result to the clipboard!"
-            )
+            ) from None
         pyperclip.copy(final_output)
         logger.info("Copied result to clipboard")
 

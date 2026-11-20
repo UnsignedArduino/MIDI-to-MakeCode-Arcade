@@ -99,15 +99,3 @@ class AbsoluteCompleteChordWithTick:
 
     instrument: int
     is_drum: bool
-
-
-@dataclass
-class TestingOptionsForLoadInstrumentParams:
-    force_load: bool | None = False
-
-
-@dataclass
-class TestingOptionsForMIDIToSong:
-    replace_all_melodics_with: int | None = None
-    replace_all_drums_with: int | None = None
-    generate_code: bool | None = False

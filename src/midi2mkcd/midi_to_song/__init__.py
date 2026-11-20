@@ -24,7 +24,6 @@ from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteNoteWithTick,
     AbsoluteTimeMessage,
     AbsoluteTimeMessageWithInstrument,
-    TestingOptionsForMIDIToSong,
 )
 from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteLyricWithTick as AbsoluteCompleteLyricWithTick,
@@ -105,7 +104,9 @@ def check_instruments_are_mapped(
 def convert_midi_to_song(
     midi_song: MidiFile,
     mapping: InstrumentParameterMapping,
-    testing_opts: TestingOptionsForMIDIToSong | None = None,
+    *,
+    replace_melodics: int | None = None,
+    replace_drums: int | None = None,
 ) -> ConvertMIDIToSongResult:
     """
     Convert a MIDI file into a MakeCode Arcade song.
@@ -113,16 +114,16 @@ def convert_midi_to_song(
     :param midi_song: A `MidiFile` object.
     :param mapping: An `InstrumentParameterMapping` object, loaded from
      `load_instrument_params`.
-    :param testing_opts: Extra options used for testing, passed from the CLI.
+    :param replace_melodics: If set, every melodic note is played by this MIDI
+     program instead (used by the tuning tools).
+    :param replace_drums: If set, every drum note is replaced with this MIDI drum
+     note (used by the tuning tools).
     :return: A convertMIDIToSongResult data class.
     :raises InstrumentParamsError: If the song uses an instrument or drum note that
      has no parameters in `mapping`.
     :raises SongConstraintError: If the song cannot fit MakeCode Arcade's format.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
-
-    if testing_opts is None:
-        testing_opts = TestingOptionsForMIDIToSong()
 
     song = Song(
         measures=1,
@@ -142,22 +143,18 @@ def convert_midi_to_song(
         global_timeline_0
     )
 
-    if testing_opts.replace_all_melodics_with is not None:
+    if replace_melodics is not None:
         logger.debug(
-            f"Testing option enabled to replace all melodic instruments with "
-            f"MIDI instrument {testing_opts.replace_all_melodics_with}"
+            f"Replacing all melodic instruments with MIDI instrument {replace_melodics}"
         )
         for m in global_timeline_1:
             if not m.is_drum:
-                m.instrument = testing_opts.replace_all_melodics_with
-    if testing_opts.replace_all_drums_with is not None:
-        logger.debug(
-            f"Testing option enabled to replace all drum notes with MIDI drum "
-            f"note {testing_opts.replace_all_drums_with}"
-        )
+                m.instrument = replace_melodics
+    if replace_drums is not None:
+        logger.debug(f"Replacing all drum notes with MIDI drum note {replace_drums}")
         for m in global_timeline_1:
             if m.is_drum:
-                m.note = testing_opts.replace_all_drums_with
+                m.note = replace_drums
 
     check_instruments_are_mapped(global_timeline_1, mapping)
 

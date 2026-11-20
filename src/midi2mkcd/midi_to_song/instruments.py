@@ -12,7 +12,6 @@ from midi2mkcd.arcade.music_types import (
     Instrument,
 )
 from midi2mkcd.errors import InstrumentParamsError
-from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ _WAVEFORMS_BY_NAME = {
 
 
 def load_instrument_params(
-    yaml_text: str, testing_opts: TestingOptionsForLoadInstrumentParams | None = None
+    yaml_text: str, *, allow_incomplete: bool = False
 ) -> InstrumentParameterMapping:
     """
     Take a YAML file specifying instrument data and return an instrument parameter
@@ -111,13 +110,32 @@ def load_instrument_params(
     necessary for the full MIDI range (use octave offset 2 and 7 for full range)
 
     :param yaml_text: String holding the YAML file's text.
-    :param testing_opts: Extra options used for testing, passed from the CLI.
+    :param allow_incomplete: Skip entries that are missing fields or invalid instead
+     of raising. The top-level structure is still checked.
     :return: An `InstrumentParameterMapping` object.
-    :raises InstrumentParamsError: If the YAML can't be parsed, or an entry is missing
-     or has invalid fields (unless `testing_opts.force_load` skips bad entries).
+    :raises InstrumentParamsError: If the YAML can't be parsed, the top level is
+     malformed, or (without `allow_incomplete`) an entry is missing or has invalid
+     fields.
     """
-    if testing_opts is None:
-        testing_opts = TestingOptionsForLoadInstrumentParams()
+    mapping, _ = load_instrument_params_with_problems(
+        yaml_text, allow_incomplete=allow_incomplete
+    )
+    return mapping
+
+
+def load_instrument_params_with_problems(
+    yaml_text: str, *, allow_incomplete: bool = False
+) -> tuple[InstrumentParameterMapping, list[str]]:
+    """
+    Like `load_instrument_params`, but also return a message for every entry that
+    was skipped because `allow_incomplete` is set.
+
+    :param yaml_text: String holding the YAML file's text.
+    :param allow_incomplete: Skip invalid entries instead of raising.
+    :return: The mapping, and the messages for the skipped entries.
+    :raises InstrumentParamsError: See `load_instrument_params`.
+    """
+    skipped: list[str] = []
     logger.debug(
         f"Loading instrument parameters from {len(yaml_text)} characters of YAML text"
     )
@@ -180,13 +198,11 @@ def load_instrument_params(
                 ),
             )
         except Exception as e:
-            if not testing_opts.force_load:
-                raise InstrumentParamsError(
-                    _entry_error("melodic instrument", "instrument", instr, e)
-                ) from e
-            # else:
-            #     logger.warning(f"Error loading melodic instrument "
-            #                    f"{instr['instrument']}: {e}. Skipping.")
+            message = _entry_error("melodic instrument", "instrument", instr, e)
+            if not allow_incomplete:
+                raise InstrumentParamsError(message) from e
+            logger.debug(f"Skipping: {message}")
+            skipped.append(message)
 
     logger.debug(
         f"Creating mappings for {len(data['drum_instruments'])} drum instruments"
@@ -208,9 +224,10 @@ def load_instrument_params(
                 ],
             )
         except Exception as e:
-            if not testing_opts.force_load:
-                raise InstrumentParamsError(
-                    _entry_error("drum instrument", "note", sample, e)
-                ) from e
+            message = _entry_error("drum instrument", "note", sample, e)
+            if not allow_incomplete:
+                raise InstrumentParamsError(message) from e
+            logger.debug(f"Skipping: {message}")
+            skipped.append(message)
 
-    return mapping
+    return mapping, skipped
