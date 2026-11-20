@@ -367,26 +367,52 @@ item 6 in "Suggested commit order". What exists now:
 - CLAUDE.md: Commands, the testing paragraph, the `-p` sentence and the
   Architecture paragraph about `main.py` / `cli.py` are updated.
 
-**Next: step 7** (README, version bump, housekeeping). Pointers:
+## README, version bump and housekeeping — DONE
 
-- README: replace every old-flag command (`-i`, `--test-*`, `--debug`,
-  `--generate-extra-code`) with the new commands (see "Mapping from old
-  flags"); replace its help-text section (currently `usage: main.py ...`,
-  around line 157) with the new `midi2mkcd -h` / subcommand help; mention
-  `tune report` (with GM names), `params show/check`, that `-p` is optional,
-  and the Windows note under "CLI" → "Behaviour" (prefer `-o` in PowerShell
-  5.1). Add a short "Use as a library" section showing `convert()`. Fix links
-  to `examples/blank_instrument_params.yaml` (now in `resources/`) if any.
-- Bump `version` in `pyproject.toml` to `0.2.0` and add `__version__` to the
-  package root (then `cli._version()` may switch to it).
-- `requirements.txt`: delete if nothing references it, or regenerate.
-- Re-run all checks and tick the acceptance checklist.
+This is item 7 in "Suggested commit order", the last step of the refactor.
+Not committed yet (left uncommitted on `cli-refactor` for review). What
+exists now:
+
+- `README.md` rewritten for the new CLI. Every old-flag command is replaced
+  (`convert`, `-f code_extra`, `tune replace --melodics/--drums`,
+  `tune sample --melodics/--drums`, `--allow-incomplete`, `--copy`, `-v`);
+  `uv run midi2mkcd` is the documented way to run it. New text covers: the
+  subcommand overview, `-p` being optional (bundled params), `-f` formats,
+  stdout carrying only code, the Windows PowerShell 5.1 `>` / UTF-16 note
+  (prefer `-o`), the 15k-note warning, `params show [--blank]` /
+  `params check`, `tune report` (with GM names and a sample table),
+  `uv sync --extra optional` for `--copy`, and a "Use as a library" section
+  (`convert()`, `to_typescript`, `warnings`, the error classes, logging,
+  `midi2mkcd.tuning`). The help-text section now shows the real
+  `midi2mkcd -h`, `convert -h`, `tune -h` and `params -h` output. The
+  `--test-ask-to-replace-*` prompts are gone from the README (removed in
+  step 6). No README links pointed at `examples/blank_instrument_params.yaml`.
+- Version is `0.2.0`, with `midi2mkcd.__version__` as the **single source of
+  truth**: `pyproject.toml` has `dynamic = ["version"]` and
+  `[tool.hatch.version] path = "src/midi2mkcd/__init__.py"`. (`uv.lock` lost
+  the `version = "0.1.0"` line for the package, which is how uv records a
+  dynamic version.) `__version__` is in `__all__`. The built wheel is
+  `midi2mkcd-0.2.0-py3-none-any.whl` and still contains both YAML files.
+- `cli.py`: `--version` uses `f"midi2mkcd {__version__}"`; `_version()` and
+  the `importlib.metadata` import are deleted.
+- `requirements.txt` deleted (`git rm`; nothing referenced it, and it only
+  listed `mido` and `pyyaml`).
+- Tests (91 pass): `test_api.py` gained
+  `test_small_song_has_no_warnings`, `test_simulator_warning_at_threshold`
+  (monkeypatches `api.SIMULATOR_NOTE_WARNING_THRESHOLD` down to the
+  fixture's note count, checks the warning is on `result.warnings` and logged
+  at WARNING, and that one below the threshold is quiet; this closes the gap
+  noted in step 5) and `test_version_matches_installed_metadata`.
+  `test_cli.py::test_version` now checks the exact `midi2mkcd 0.2.0` line.
+- Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format
+  --check src tests`, `uv run mypy src tests` and `uv run pre-commit run
+  --all-files` all pass.
 
 ## Target layout
 
 ```
 src/midi2mkcd/
-  __init__.py          # re-exports the public API, defines __all__ and __version__
+  __init__.py          # re-exports the public API, defines __all__ and __version__ (DONE, step 7)
   api.py               # convert(), load_instrument_params(), ConversionResult
   tuning.py            # instrument-tuning tools (convert_replaced, sample_melodics); not re-exported
   render.py            # ALL TypeScript/text output generation
@@ -667,7 +693,8 @@ midi2mkcd params check [-p PARAMS] [-v]
   matters more than saving one word.
 - `--version` prints `midi2mkcd <version>` from
   `importlib.metadata.version("midi2mkcd")` (works before step 7 adds
-  `__version__`; switch to `__version__` then if preferred).
+  `__version__`; switch to `__version__` then if preferred). Step 7 switched
+  it to `midi2mkcd.__version__`.
 - Shared options are defined once in helper functions (`_add_params`,
   `_add_output`, `_add_verbose`, ...) called on each leaf subparser that
   takes them: `-v/--verbose`, `-p/--params`, `-o/--output` + `--copy`,
@@ -1093,12 +1120,13 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 
 ## Other housekeeping
 
-- Bump version to `0.2.0`.
-- Delete `requirements.txt` if nothing references it (`pyproject.toml` and
-  `uv.lock` are the source of truth), or regenerate it from the lock file.
-- Update `README.md`: new CLI syntax in every example command and the help
+- ~~Bump version to `0.2.0`.~~ Done in step 7 (`__version__` is the source).
+- ~~Delete `requirements.txt` if nothing references it (`pyproject.toml` and
+  `uv.lock` are the source of truth), or regenerate it from the lock file.~~
+  Deleted in step 7.
+- ~~Update `README.md`: new CLI syntax in every example command and the help
   text section, a short "Use as a library" section showing `convert()`, and
-  fix links to the moved YAML.
+  fix links to the moved YAML.~~ Done in step 7.
 - `uv run ruff check`, `uv run ruff format --check` and `uv run mypy` (strict)
   must pass, matching `.pre-commit-config.yaml`.
 
@@ -1117,7 +1145,8 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
    Done in `04060f5`.
 6. ~~New `cli.py`, delete `main.py` and `test_golden_cli.py`, update entry point.~~
    Done in "Rewrite the CLI as subcommands on top of the library".
-7. README, version bump, remaining tests.
+7. ~~README, version bump, remaining tests.~~ Done (uncommitted at the time
+   of writing).
 
 ## Acceptance checklist
 
@@ -1129,7 +1158,7 @@ conftest rejects anything else) and use the paths from `tests/helpers.py`.
 - [x] `convert()` takes no tuning arguments; replacement and sampling are only reachable through `midi2mkcd.tuning`, which the root package does not import. (`04060f5`)
 - [x] `cli.py` contains no f-strings that build TypeScript. (step 6)
 - [x] The built wheel is `py3-none-any` and contains `midi2mkcd/resources/instrument_params.yaml` (already true as of `306633b`).
-- [ ] ruff, ruff format and mypy strict are clean. (Clean after step 6, including `uv run pre-commit run --all-files`; recheck at the end.)
+- [x] ruff, ruff format and mypy strict are clean. (Rechecked after step 7, including `uv run pre-commit run --all-files`.)
 
 ## Planned features (after this refactor)
 

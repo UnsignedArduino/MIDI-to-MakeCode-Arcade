@@ -13,12 +13,11 @@ from argparse import (
     RawDescriptionHelpFormatter,
 )
 from collections.abc import Callable
-from importlib.metadata import PackageNotFoundError, version
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 
-from midi2mkcd import render, tuning
+from midi2mkcd import __version__, render, tuning
 from midi2mkcd.api import (
     ParamsInput,
     convert,
@@ -111,7 +110,9 @@ def build_parser() -> ArgumentParser:
         epilog="Run 'midi2mkcd COMMAND -h' for a command's options.",
         formatter_class=_HelpFormatter,
     )
-    parser.add_argument("--version", action="version", version=_version())
+    parser.add_argument(
+        "--version", action="version", version=f"midi2mkcd {__version__}"
+    )
     commands = parser.add_subparsers(title="commands", required=True)
 
     p = _leaf(commands, "convert", _run_convert, "Convert a MIDI file to Arcade code.",
@@ -175,13 +176,6 @@ def build_parser() -> ArgumentParser:
                    help="File to check. Default: the bundled parameters.")  # fmt: skip
     _add_verbose(p)
     return parser
-
-
-def _version() -> str:
-    try:
-        return f"midi2mkcd {version('midi2mkcd')}"
-    except PackageNotFoundError:
-        return "midi2mkcd (unknown version)"
 
 
 def _group(commands: Any, name: str, summary: str) -> Any:

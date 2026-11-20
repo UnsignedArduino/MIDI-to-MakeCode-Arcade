@@ -1,5 +1,7 @@
 import logging
 
+__version__ = "0.2.0"
+
 # Library code only logs; the host application decides where records go.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
@@ -26,6 +28,7 @@ __all__ = [
     "Midi2MkcdError",
     "OutputFormat",
     "SongConstraintError",
+    "__version__",
     "convert",
     "default_instrument_params_text",
     "load_instrument_params",

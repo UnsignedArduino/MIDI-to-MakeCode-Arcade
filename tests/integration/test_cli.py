@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from helpers import FIXTURE_MIDI, GOLDEN
 
-from midi2mkcd import default_instrument_params_text, render, tuning
+from midi2mkcd import __version__, default_instrument_params_text, render, tuning
 from midi2mkcd.cli import main
 
 INPUT = str(FIXTURE_MIDI)
@@ -150,7 +150,7 @@ def test_help_exits_zero(argv: list[str], capsys: pytest.CaptureFixture[str]) ->
 
 def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert run(["--version"]) == 0
-    assert capsys.readouterr().out.startswith("midi2mkcd ")
+    assert capsys.readouterr().out == f"midi2mkcd {__version__}\n"
 
 
 @pytest.mark.parametrize(
