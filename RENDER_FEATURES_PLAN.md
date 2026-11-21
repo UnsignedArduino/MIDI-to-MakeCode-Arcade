@@ -650,6 +650,18 @@ Stage 2 implementation notes:
    pairs, with no MakeCode involved. Recording it played in Chrome the same
    way shows whether the chain changes levels. The first note started 230 ms
    late this time (141 ms before), so that start-up delay varies.
+   **Chain test result (Chrome incognito tab, same OBS app capture):** the
+   capture chain compresses heavily, so the **simulator is not the cause**.
+   File levels −6 to −24 dB (18 dB range) recorded as −1 to −10 dB (about
+   9 dB): quiet bursts boosted ~15 dB, loud ones ~5 dB, peaks up to 1.4
+   (past full scale). It behaves the same in both directions and on
+   loud-after-quiet pairs, and the steady tone drifts up ~1 dB over 6 s.
+   Chrome doesn't compress its output, so suspect a Windows per-app or
+   device effect (Audio enhancements / Loudness Equalization, a vendor
+   suite such as Realtek Audio Console, Dolby, Nahimic, Sonic Studio or
+   MaxxAudio) or an OBS filter. **Rule: re-run the chain test first; only
+   trust level measurements from a setup where "recorded − file" is
+   constant to within ~0.5 dB.**
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
