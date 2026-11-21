@@ -227,6 +227,19 @@ while editing. Target perceptual equality with the simulator, not
 sample-exact output, for stage 2 below. Stage 1 can and should be
 byte-exact.
 
+**What is the source of truth for what:**
+
+- **pxt source code** for everything pxt computes itself: instruction
+  bytes, envelope/LFO math, tick timing, gain formulas. This is the same in
+  every browser (the 20 ms tick, too: `setInterval`'s delay is a WebIDL
+  `long` everywhere).
+- **Chrome's Web Audio** for what the browser decides: oscillator
+  band-limiting, looped-buffer interpolation, `setTargetAtTime` curves.
+  Firefox and Safari may differ slightly there; Chrome is the target since
+  most users run it.
+- **Recordings only validate** the model, and only for what survives the
+  capture chain. They are never the spec.
+
 Call path for one song note in the simulator **(verified)**:
 `Sequencer.onTick` → `playNoteAsync(note, instrument, gateMs, volume)` →
 `renderInstrument(instrument, frequencies[note], gateMs, volume)` →
@@ -593,7 +606,38 @@ Stage 2 implementation notes:
    once, and envelope/LFO cases (amp LFO 4 Hz and 20 Hz, pitch LFO at a low
    and a high note, a pitch envelope, attack 0, release 0, a 1-tick gate
    shorter than the attack). About 98 s in the simulator. Its recording is
-   the reference to compare `render` against. Expect several "slightly off"
+   the reference to compare `render` against.
+   **First calibration recording (2026-11-20, Chrome, OBS, 48 kHz):**
+   - **Unusable for levels.** Something in the capture chain (a Windows
+     audio enhancement such as Loudness Equalization, a device effect, or an
+     OBS filter; pxtsim itself has no compressor) rode the gain: identical
+     reference sines measured −4.3/−8.4/−5.8 dB, notes after a gap started
+     loud and sagged, and velocity 32 came out as loud as 127. So waveform
+     levels, the `/4` and square halving, velocity linearity and polyphony
+     loudness are **still unverified**. Re-record with enhancements and OBS
+     filters off (or OBS "Application Audio Capture" of Chrome, which takes
+     the app's stream before device effects).
+   - **Timing:** after the first note, every onset is 141 ms earlier than
+     "first onset + 20 ms × tick", with no drift over 100 s. So 20 ms per
+     tick holds, and the **very first note of a song starts ~140 ms late**
+     (audio start-up latency; `render` can ignore it).
+   - **Polyphony:** all 32 notes of the 32-note chord sound at once (each
+     note's spectral peak present): **no voice cap** in the live simulator.
+   - **Amp LFO 4 Hz:** 4.00 Hz modulation, deep. **Amp LFO 20 Hz:** no 20
+     Hz modulation (1.2 dB ripple), as predicted: the 50 ms LFO points land
+     on whole cycles, `cos(2π·20·0.05k) = 1`, so the LFO is a constant.
+   - **Pitch LFO 6 Hz ±10 Hz:** 6.03 Hz vibrato of ±10 Hz at both MIDI 36
+     (55–75 Hz) and MIDI 84 (1038–1057 Hz), confirming Hz, not cents.
+   - **Pitch envelope +200 Hz (A200 D300 S0):** 262 → 460 Hz at 200 ms,
+     back to 262 Hz by ~500 ms, as modelled.
+   - **Attack 0 / release 0:** both play normally (no silence or NaN
+     glitch); release 0 ends ~75 ms after the gate (10 ms ramp plus the
+     15 ms-time-constant fade).
+   - **1-tick gate shorter than a 200 ms attack:** sounds for ~330 ms and
+     peaks ~150 ms in, where the model predicts a peak at the gate (~21 ms)
+     and silence by ~290 ms. Inconclusive because of the gain riding; the
+     Stage 1 goldens from the real `song.ts` will settle it.
+   Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
 3. Tests in CI: stage-1 goldens; stage 2 sanity checks (a sine note's peak
