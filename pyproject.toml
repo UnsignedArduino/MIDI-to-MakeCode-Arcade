@@ -42,7 +42,7 @@ dev = [
 [tool.ruff]
 target-version = "py314"
 # Its Python blocks are design sketches, not code to keep formatted
-extend-exclude = ["REFACTOR_PLAN.md"]
+extend-exclude = ["REFACTOR_PLAN.md", "RENDER_FEATURES_PLAN.md"]
 
 [tool.mypy]
 python_version = "3.14"

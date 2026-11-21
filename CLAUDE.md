@@ -46,7 +46,7 @@ The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/p
 
 The song is fixed at 120 BPM, 4 beats/measure, 24 ticks/beat (1 tick = 1/48 s). All MIDI timing is converted to absolute seconds and then quantized to this grid; MIDI tempo is not carried into the song header.
 
-**`arcade/`** is a Python port of pxt's `pxtlib/music.ts` (encode/decode) and `localtypings/pxtmusic.d.ts` (types). The byte layout is documented in a comment at the top of `music_types.py`. Keep this code faithful to upstream pxt. Per-chord velocity is encoded as an extra trailing section, which only Arcade beta reads right now.
+**`arcade/`** is a Python port of pxt's `pxtlib/music.ts` (encode/decode) and `localtypings/pxtmusic.d.ts` (types). The byte layout is documented in a comment at the top of `music_types.py`. Keep this code faithful to upstream pxt. Per-chord velocity is encoded as an extra trailing section, which stable Arcade now reads (older versions ignore it).
 
 Format limits that drive most of the pipeline's complexity: each note is stored as 6 bits relative to the track's octave (a 64-note range), track/note-byte lengths are 16-bit, and polyphony is per-chord with no overlap within a track. Breaking any of these splits tracks rather than dropping notes.
 

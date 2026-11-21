@@ -1,11 +1,13 @@
 import io
 import logging
+from collections import Counter
 from copy import deepcopy
 from importlib.metadata import version
 from pathlib import Path
 
 import pytest
 from helpers import FIXTURE_MIDI, GOLDEN
+from mido import Message, MidiFile, MidiTrack
 
 from midi2mkcd import (
     InstrumentParamsError,
@@ -113,6 +115,46 @@ def test_simulator_warning_at_threshold(
     # One below the threshold stays quiet
     monkeypatch.setattr(api, "SIMULATOR_NOTE_WARNING_THRESHOLD", count + 1)
     assert convert(MIDI).warnings == []
+
+
+def long_drum_midi() -> tuple[bytes, Counter[int]]:
+    """
+    A drum part long enough to be split into two drum tracks by the 16-bit note byte
+    limit, with different drums before and after the split. Returns the MIDI bytes
+    and how many times each drum note is hit.
+    """
+    mid = MidiFile(type=0, ticks_per_beat=480)  # 120 BPM: one song tick = 20 ticks
+    track = MidiTrack()
+    mid.tracks.append(track)
+    hits: Counter[int] = Counter()
+    # One drum per note event is 6 note bytes, so ~10.9k events fill a track
+    for i in range(12000):
+        pair = (38, 42) if i < 11000 else (36, 49)
+        drum = pair[i % 2]
+        hits[drum] += 1
+        gap = 0 if i == 0 else 20  # one song tick of silence between hits
+        track.append(Message("note_on", channel=9, note=drum, velocity=100, time=gap))
+        track.append(Message("note_off", channel=9, note=drum, velocity=0, time=20))
+    buf = io.BytesIO()
+    mid.save(file=buf)
+    return buf.getvalue(), hits
+
+
+def test_drum_map_is_right_for_every_drum_track() -> None:
+    midi, hits = long_drum_midi()
+    mapping = load_instrument_params(default_instrument_params_text())
+    result = convert(midi, mapping)
+    drum_map = result.drum_idx_to_midi_drum
+    drum_tracks = [t for t in result.song.tracks if t.drums is not None]
+    assert len(drum_tracks) == 2
+    recovered: Counter[int] = Counter()
+    for track in drum_tracks:
+        assert track.drums is not None
+        for i, drum in enumerate(track.drums):
+            assert drum == mapping.drum_instruments[drum_map[i]]
+        for event in track.notes:
+            recovered.update(drum_map[n.note] for n in event.notes)
+    assert recovered == hits
 
 
 def test_version_matches_installed_metadata() -> None:

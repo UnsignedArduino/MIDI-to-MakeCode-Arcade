@@ -1,8 +1,9 @@
 # Feature plan: audio rendering, MIDI recovery, SoundFont export and instrument fitting
 
 This file is self-contained. It is written for a fresh Claude Code session in
-the `midi2mkcd` repo (branch `cli-refactor` or later) that has **only this
-file** as design context, plus the repo itself and its `CLAUDE.md`.
+the `midi2mkcd` repo (branch `render-features`, cut from `main` after the
+`cli-refactor` branch was merged) that has **only this file** as design
+context, plus the repo itself and its `CLAUDE.md`.
 
 It covers four new commands and one new flag:
 
@@ -16,8 +17,11 @@ It covers four new commands and one new flag:
 
 Suggested order: `recover-midi`, then the synthesizer (with its validation
 harness), then `render` and `tune ... --wav`, then `params soundfont`, then
-`params fit`. Each is its own commit (or several); none of them changes the
-conversion algorithm or the existing golden outputs.
+`params fit`, and **last of all** two-layer instruments (`params fit --layers 2`,
+section 6), an even-more-stretch goal to be designed in detail only when
+everything else is done. Each is its own commit (or several). Apart from the
+`midiDrumNoteMap` fix (section 3) and two-layer instruments, none of them
+changes the conversion algorithm or the existing golden outputs.
 
 Facts marked **(verified)** were read from the upstream source at the commits
 listed in "Upstream source"; everything else is design. Items under
@@ -30,7 +34,7 @@ listed in "Upstream source"; everything else is design. Items under
 Read `CLAUDE.md` first; this section only summarises what these features
 depend on.
 
-### Library layout (as of `cli-refactor` @ `1418fdd`)
+### Library layout (as of `main` @ `2e58978`, the `cli-refactor` merge)
 
 ```
 src/midi2mkcd/
@@ -120,8 +124,10 @@ const lyricTexts: string[] = [...];
   27–87, not a format limit. The drum track's `instrument` is a dummy
   (square_10, octave 4).
 - **Velocity** is stored in an optional trailing per-track section (one byte
-  per note event), written only when some event has velocity < 128.
-  `CLAUDE.md` says only Arcade beta reads it. Missing velocity means 128.
+  per note event), written only when some event has velocity < 128. Since
+  MIDI velocities top out at 127, in practice it is always written for
+  converted songs. Stable MakeCode Arcade now reads it (per-chord velocity is
+  generally available). Missing velocity means 128.
 
 ### Song buffer layout (from `arcade/music_types.py`, port of `pxtmusic.d.ts`)
 
@@ -172,8 +178,9 @@ melodic note byte: low 6 bits = note - (octave - 2) * 12; high 2 bits = enharmon
   Only `cli.configure_logging` adds a handler (stderr). stdout carries only
   command output.
 - **Library returns bytes** for binary outputs (`to_wav_bytes`,
-  `song_to_midi`, SF2 writer), so a Pyodide web page can wrap them in a
-  `Blob`. No file I/O in the library except the bundled YAML.
+  `song_to_midi`, SF2 writer). No file I/O in the library except the bundled
+  YAML. This keeps the door open for a possible future Pyodide web page that
+  wraps them in a `Blob`; that page is **out of scope** for this plan.
 - **Optional dependencies, imported lazily.** numpy goes in an `audio` extra,
   the optimizer (`cma` and/or scipy) in a `fit` extra. A missing extra gives
   a clear error naming the extra, like `--copy` does for pyperclip:
@@ -370,15 +377,20 @@ handle escapes and non-ASCII).
   `2 ** (-(n - 37) / 12 * k)` (n = Arcade note index), round, clamp 1–127.
   k comes from `-p`, or the bundled default's k if `-p` is omitted (log which).
   Approximate either way because of the original rounding and clamping.
-- **Drum-map caveat (verify).** In `convert_midi_to_song`,
-  `midi_drum_to_drum_idx` is one dict shared across drum tracks, but each
-  drum track numbers its own drums from 0, and `drum_idx_to_midi_drum` is
-  `list(dict.keys())`. With **one** drum track this is exact. With several
-  (a long song split by the note-byte limit, or several drum channels), the
-  map can be wrong for later tracks. For `recover-midi`, prefer matching each
-  track's embedded drums against the params when there is more than one drum
-  track, and log it. Consider fixing the converter separately (it changes
-  `code_extra` semantics, so check the Song-Visualizer project first).
+- **Drum map (fixed).** The converter used to number each drum track's drums
+  from 0 while building one shared `midiDrumNoteMap`, so the map was wrong
+  once a song had two drum tracks. All drum notes go into one drum track,
+  which only splits at the 16-bit note-byte limit, so it took a long drum
+  part to hit this. Drum indices are now numbered once for the whole song
+  (sorted MIDI drum notes), and each drum track carries the song-wide list
+  up to the highest index it uses. So `midiDrumNoteMap[i]` is right for
+  every drum track and `recover-midi` can trust it. Songs with one drum track
+  encode exactly as before. The map stays a flat array, which is what
+  Song-Visualizer (`prepareDrumTracks`) expects, so it needs no change.
+  `code_extra` files from older converter versions with several drum tracks
+  can still have a wrong map. If such a map doesn't fit (an index past its
+  end), fall back to matching each track's drums against the params and log
+  it.
 - **Merging:** tracks with the same program (range splits, note-byte splits,
   and in future layered tracks; see `params fit`) merge back into one MIDI
   channel. When merging, drop exact duplicate notes (same start, end, pitch),
@@ -396,9 +408,13 @@ handle escapes and non-ASCII).
   recovers programs 0 and 48, drum notes 36/38/42 and the lyrics (including
   `café`); the plain-hex path recovers the same programs and drums with the
   bundled params; every note start matches the fixture within one song tick;
-  converting the recovered MIDI again gives the same song hex (a strong
-  check, if it holds); a `tune sample` output is rejected as multi-song; a file
-  with no literal is rejected.
+  converting the recovered MIDI again gives a song with the **same notes and
+  timing** (same tracks, note events, pitches, start/end ticks) and every
+  velocity within ±N of the original (pick N from the observed rounding error,
+  e.g. 2). Exact hex equality is not expected: undoing pitch compensation
+  rounds and hits the 1–127 clamp, and re-applying the gate fix may not be
+  idempotent. A `tune sample` output is rejected as multi-song; a file with no
+  literal is rejected.
 
 ---
 
@@ -446,9 +462,10 @@ Stage 2 implementation notes:
   (what the output device does); log a WARNING with the peak and the number of
   clipped samples if any. Consider a `--normalize` flag later; not by default.
 - Render until every note's tail has finished (`stop(true)` keeps them).
-- `--no-velocity` (`use_velocity=False`) treats every event as velocity 128,
-  to hear the song as stable (non-beta) Arcade plays it, if the open question
-  below confirms stable Arcade ignores the velocity section.
+- Velocity is honoured by default, since stable Arcade reads the velocity
+  section. `--no-velocity` (`use_velocity=False`) treats every event as
+  velocity 128, to hear the song as older Arcade versions (which ignore the
+  section) play it.
 
 ### CLI behaviour
 
@@ -457,8 +474,9 @@ Stage 2 implementation notes:
   helper from `recover-midi`). Decide the input type by trying MIDI first, or
   by extension; whichever, document it and test both.
 - `tune replace --wav OUT.wav` renders the replaced song instead of (not as
-  well as) the text output; `--wav` and `-o`/`--copy` are mutually exclusive
-  or `--wav` wins; pick one and test it. `tune sample --wav` renders the
+  well as) the text output. `--wav` is **mutually exclusive** with `-o`,
+  `--copy` and `-f` (argparse mutually exclusive group, so it is a usage
+  error, exit 2); test it. Same for `tune sample --wav`. `tune sample --wav` renders the
   sampler's songs one after another with ~1 s of silence between them and
   logs which instrument starts at which time (e.g. `0:00 program 40`,
   `0:12 program 41`). The sampler renders its `ConversionResult`s directly,
@@ -648,7 +666,13 @@ summed over every note of the test phrase.
 - Remember pitch-envelope and pitch-LFO amplitudes are **Hz**, so a vibrato
   fitted at one note is deeper (in cents) on lower notes. Fit across the range.
 
-### Two layers (`--layers 2`)
+### Two layers (`--layers 2`): do this last, after everything else
+
+**Deferred.** This is the only part of the plan that changes the params
+schema and the converter's output, so it is left until every other feature
+(including single-layer `params fit`) is done, and gets its own design pass
+then. The notes below are a starting point, not a settled design. Until then,
+`params fit` supports only `--layers 1` (or has no `--layers` flag).
 
 Stacking two voices gives a crude timbre change over time (e.g. a bright
 square with a fast decay over a sustaining triangle ≈ a plucked or struck
@@ -692,15 +716,16 @@ working).
    past the `frequencies` table and should be silent. Confirm in the editor;
    if so, have `render` reproduce it (and log a count), and consider a
    converter warning on `result.warnings`.
-2. **Does stable Arcade read the velocity section?** `CLAUDE.md` says only
-   beta does; the `pxt` master code read here does. Confirm which version the
-   user's editor runs and set `--no-velocity`'s default accordingly.
+2. ~~**Does stable Arcade read the velocity section?**~~ Answered: yes,
+   per-chord velocity is now generally available in stable Arcade (README
+   updated). `render` honours velocity by default.
 3. **Buffer-source frequency ramps.** For squares and noise generators, check
    whether `playInstructions.ts` sets `playbackRate` at the start of each
    instruction or only ramps from the previous value (affects drum pitch
    sweeps).
-4. **Multi-drum-track `midiDrumNoteMap`** (see `recover-midi`): confirm the
-   suspected mismatch with a test song that produces two drum tracks.
+4. ~~**Multi-drum-track `midiDrumNoteMap`**~~ Confirmed and fixed (see
+   `recover-midi`). `tests/integration/test_api.py::test_drum_map_is_right_for_every_drum_track`
+   covers it.
 5. **SF2 velocity modulator override** and the **release-time factor**:
    measure with FluidSynth and at least one MIDI editor the user actually
    uses.
