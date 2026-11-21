@@ -269,8 +269,17 @@ Call path for one song note in the simulator **(verified)**:
 - On each tick, for each track, for each note event whose `startTick` equals
   the current tick, for **each note in the event separately**:
   - `velocity = noteEvent.velocity ?? 128`
-  - melodic: `volume = globalVolume * (trackVolume / 1024) * (velocity / 128)`
-    with `globalVolume = trackVolume = 1024` by default (so `8 * velocity`);
+  - melodic: `volume = globalVolume * (trackVolume / 1024) * (velocity / 128)`.
+    **`globalVolume` is `music.volume()`, which defaults to 128** (it is a
+    0–255 value, `CFG_SPEAKER_VOLUME` default 128 in
+    `pxt-common-packages/libs/mixer/melody.ts`; `_SimulatorSequencer` passes
+    it straight to `setVolume`, which clamps to 0–1024). `trackVolume` is
+    1024. So by default **`volume = velocity`** (127 for velocity 127), not
+    `8 * velocity`: songs play 18 dB below full scale unless the game calls
+    `music.setVolume` (max 255, still 12 dB down). Measured to 0.01 dB
+    (calibration recording 3). `render` needs a `--volume` (default 128,
+    0–255) and must use it here; the coarse integer rounding in
+    `renderInstrument` at these small volumes matters;
     `gate = tickToMs(endTick - startTick)`; frequency = `frequencies[note]`
     where `note` is the decoded note index (after the octave offset).
   - drum: same volume times `drumVolume / 1024` (default 1024), and
@@ -340,8 +349,13 @@ Per instruction:
 
 - Volume: `gain = (v / 1024) / 4`, and **halved again for square waves (11–15)**.
   Combined with `addNote`'s `(v * 255) >> 6`, the effective peak amplitude is
-  ≈ `env_level / 1024 · velocity / 128` (× 0.5 for squares), with
-  oscillators at ±1.
+  ≈ `env_level / 1024 · volume / 1024` (× 0.5 for squares), with
+  oscillators at ±1, and `volume = music.volume() · velocity / 128` (about
+  `velocity / 1024` by default, see Stage 0). **Measured** (calibration
+  recording 3): a flat sine at velocity 127 is −21.18 dBFS, exactly
+  `(127·255 >> 6) / 1024 / 4 / √2`; velocity is exactly linear
+  (−5.95 dB at 64, −12.0 dB at 32 for every waveform); squares are −3.0 dB
+  against a sine (the × 0.5 on an rms-1 wave), for all five duties.
 - `gain.setValueAtTime(start, t)` then `linearRampToValueAtTime(end, t + d)`.
 - One generator node per **waveform** per note, created on first use, started
   immediately, and reused. When the waveform changes (only drums do this),
@@ -542,9 +556,17 @@ Stage 2 implementation notes:
 - Gains: `(v / 1024) / 4`, × 0.5 for squares; reproduce the 15 ms
   `setTargetAtTime` fades (exponential with time constant 0.015 s) at waveform
   changes and at the end.
-- Mix all notes as float32. Write WAV as 16-bit PCM with hard clipping at ±1
-  (what the output device does); log a WARNING with the peak and the number of
-  clipped samples if any. Consider a `--normalize` flag later; not by default.
+- Mix all notes as float32 (measured: chord rms grows +3.0 dB per doubling
+  up to 32 notes, a plain sum with no cap or ducking). Write WAV as 16-bit
+  PCM with hard clipping at ±1 (what the output device does); log a WARNING
+  with the peak and the number of clipped samples if any. At the default
+  volume a full-level sine peaks at ~0.12, so clipping needs roughly 8 or
+  more loud notes at once. Consider a `--normalize` flag later; not by
+  default.
+- Chrome's built-in `sawtooth` is normalised so its band-limited overshoot
+  (peak ≈ 1.18) fits in ±1: measured 1.5 dB below an ideal ±1 saw
+  (20·log₁₀ 1.18 = 1.4). Scale the band-limited saw the same way. Triangle
+  has no overshoot and measured exactly as modelled.
 - Render until every note's tail has finished (`stop(true)` keeps them).
 - Velocity is honoured by default, since stable Arcade reads the velocity
   section. `--no-velocity` (`use_velocity=False`) treats every event as
@@ -671,6 +693,36 @@ Stage 2 implementation notes:
    gets the same +3 dB as an `<audio>` element (for example, check that a
    flat sine at velocity 127 measures ≈ −3.1 dBFS + 3.01 dB). The
    calibration song must be re-recorded with this setup.
+   **Third calibration recording (clean chain; the reference for Stage 2):**
+   - The +3.01 dB applies to Web Audio too: the model plus 3.01 dB matched
+     the reference sine (−18.17 dB) and the single chord note (−36.26 vs
+     −36.3 dB).
+   - **Levels at velocity 127, relative to a sine (measured / modelled):**
+     triangle −1.76/−1.76, sawtooth −3.29/−1.79 (Chrome's normalisation,
+     see Stage 2 notes), noise_tunable −1.07/−1.34, noise −2.84/−1.78,
+     squares −3.03 to −3.10/−3.02, cycle_16 −0.58/−0.60, cycle_32
+     −1.13/−1.03, cycle_64 −1.39/−1.48. The modelled values come from
+     simulating the exact pxtsim buffers with linear interpolation (and
+     ideal band-limited triangle/saw). Noise's extra −1 dB is the AAC
+     encoder's ~19 kHz low-pass removing part of white noise's energy, not
+     the simulator; compare noise against an uncompressed render.
+   - **Global volume:** music.volume() 128 makes everything 18 dB quieter
+     than full scale (Stage 0).
+   - **Velocity:** exactly linear for all 13 waveforms.
+   - **Polyphony:** a plain sum (+3.0 dB per doubling), no cap.
+   - **Short gate (1 tick, attack 200 ms, release 200 ms):** the amplitude
+     keeps rising linearly for the **whole 200 ms attack**, well past the
+     21 ms gate, then falls to silence by ~220 ms (gate + release). So the
+     "after the gate, ramp from the gate's value to 0" reading in Stage 1 is
+     wrong for gates shorter than the attack. Port `song.ts` exactly and let
+     the Stage 1 goldens include this case. The note is also very quiet.
+   - **Attack 0** works (instant start, ends at gate + release). **Release 0**
+     ends ~8 ms after the gate (the 10 ms ramp to 0).
+   - **LFOs and pitch envelope** as in recording 1 (4.00 Hz amp LFO; no
+     modulation at 20 Hz; 6.03 Hz ±10 Hz vibrato; 262→457→262 Hz bend).
+   - **Drums** last their step total: median 0 ms, 80% within ±12 ms.
+   - Ticks: 20 ms, drift 3 ms per 1000 ticks; the first note was ~55 ms
+     late this time (so 55–230 ms, varies).
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
@@ -697,7 +749,10 @@ song. Lives under `params` because it exports a params file, not a song.
   kit (one zone per drum note 27–87, one-shot samples).
 - Render each sample with stage 1 + stage 2 of `audio.py` directly
   (`note_instructions` with the Arcade note index `midi - 23` and
-  `volume = 1024`, i.e. velocity 128), not by pushing a one-note MIDI file
+  `volume = 1024`, i.e. velocity 128 at full global volume, for the best
+  resolution; then scale the sample down to the simulator's default level,
+  `music.volume()` 128, i.e. × 1/8, so the SF2 sounds as loud as the editor,
+  or leave the headroom to the MIDI editor and document it), not by pushing a one-note MIDI file
   through `convert()`. That is much faster for ~12k samples and avoids the
   velocity clamp. Apply pitch compensation as a per-sample gain
   `2 ** (-(midi - 60) / 12 * k)` (factor the scaler out of
