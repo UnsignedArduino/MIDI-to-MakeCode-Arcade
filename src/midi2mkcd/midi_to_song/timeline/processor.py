@@ -268,6 +268,40 @@ def timeline_group_by_instrument(
     return tracks
 
 
+def _split_by_octave_windows(
+    track: list[AbsoluteCompleteNoteWithTick],
+) -> list[list[AbsoluteCompleteNoteWithTick]]:
+    """
+    Split a melodic track into as few tracks as possible, each fitting one octave
+    offset's 64-note window (`(octave - 2) * 12` to `+ 63`, octave 0-9). Every note
+    goes into exactly one track, so none are dropped or doubled. Notes are in the
+    pitch-shifted space (MIDI note - 23), so they can be negative.
+
+    Greedy from the lowest note: take the highest window that still starts at or
+    below it, put every note that window reaches into one track, and repeat with the
+    rest. This gives the fewest windows.
+
+    :param track: The notes of one melodic track.
+    :return: The tracks, lowest window first.
+    """
+    window_starts = [(octave - 2) * 12 for octave in range(10)]
+    remaining = sorted(track, key=lambda n: n.note)
+    split = []
+    while remaining:
+        lowest = remaining[0].note
+        starts = [s for s in window_starts if s <= lowest]
+        if not starts:
+            raise RuntimeError(
+                f"Note {lowest} is below every octave window (please report)"
+            )
+        top = max(starts) + 63
+        split.append([n for n in remaining if n.note <= top])
+        remaining = [n for n in remaining if n.note > top]
+    # keep each track in its original (time) order
+    order = {id(n): i for i, n in enumerate(track)}
+    return [sorted(t, key=lambda n: order[id(n)]) for t in split]
+
+
 def timeline_split_tracks_for_ranges(
     timeline: list[list[AbsoluteCompleteNoteWithTick]],
 ) -> list[list[AbsoluteCompleteNoteWithTick]]:
@@ -311,19 +345,7 @@ def timeline_split_tracks_for_ranges(
             new_tracks.append(old_track)
             tracks_that_fit += 1
         else:
-            # split into three tracks to guarantee covering [0, 127]
-            # TODO: figure out if we really need 3 tracks all the time (probably not?)
-            #  maybe we can test a version where we start with MIDI notes [12, 75] and
-            #  [72, 135] or similar
-            low_track = [n for n in old_track if 0 <= n.note < 64]
-            med_track = [n for n in old_track if 60 <= n.note < 124]
-            high_track = [n for n in old_track if 124 <= n.note < 128]
-            if len(low_track) > 0:
-                new_tracks.append(low_track)
-            if len(med_track) > 0:
-                new_tracks.append(med_track)
-            if len(high_track) > 0:
-                new_tracks.append(high_track)
+            new_tracks.extend(_split_by_octave_windows(old_track))
             tracks_that_split += 1
 
     logger.debug(

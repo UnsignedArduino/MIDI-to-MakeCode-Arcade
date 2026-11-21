@@ -20,8 +20,9 @@ harness), then `render` and `tune ... --wav`, then `params soundfont`, then
 `params fit`, and **last of all** two-layer instruments (`params fit --layers 2`,
 section 6), an even-more-stretch goal to be designed in detail only when
 everything else is done. Each is its own commit (or several). Apart from the
-`midiDrumNoteMap` fix (section 3) and two-layer instruments, none of them
-changes the conversion algorithm or the existing golden outputs.
+`midiDrumNoteMap` fix (section 3), the range-splitting fix (open question 8),
+both already done, and two-layer instruments, none of them changes the
+conversion algorithm or the existing golden outputs.
 
 Facts marked **(verified)** were read from the upstream source at the commits
 listed in "Upstream source"; everything else is design. Items under
@@ -233,9 +234,18 @@ Call path for one song note in the simulator **(verified)**:
 
 ### Stage 0: sequencer (`pxtsim/sound/sequencer.ts`) (verified)
 
-- Tick length in ms: `(60000 / bpm) / ticksPerBeat` (= 20.833 ms at 120 BPM,
-  24 ticks/beat). Song length = `measures * beatsPerMeasure * ticksPerBeat`
-  ticks. On the last tick it stops with `stop(true)`, which lets sounding
+- `tickToMs(bpm, tpb, ticks) = (60000 / bpm) / tpb * ticks` (= 20.833 ms per
+  tick at 120 BPM, 24 ticks/beat). **But ticks actually fire every 20 ms:**
+  the metronome worker calls `setInterval(..., tickToMs(1))`, and
+  `setInterval` converts its delay to an integer number of ms (truncating),
+  so 20.833 becomes 20 (`metronome.ts`, verified). **Measured** in a
+  recording of the simulator (Chrome, 2026-11-20): note starts 48 song
+  ticks apart are exactly 0.96 s apart, and 600 ticks are 12.00 s, so
+  converted songs play **4% fast** (125 instead of 120 BPM). Gate lengths
+  still use the unrounded `tickToMs` (500 ms for 24 ticks). So in `render`:
+  note start = `tick * trunc(tickToMs(1))` ms, gate = `tickToMs(endTick -
+  startTick)`. (Worker timer jitter averages out offline.) Song length =
+  `measures * beatsPerMeasure * ticksPerBeat` ticks. On the last tick it stops with `stop(true)`, which lets sounding
   notes finish (so render the release tails after the last tick).
 - On each tick, for each track, for each note event whose `startTick` equals
   the current tick, for **each note in the event separately**:
@@ -250,9 +260,9 @@ Call path for one song note in the simulator **(verified)**:
   (31 Hz) … index 96 = B8 (7902 Hz); index i ≈ 440·2^((i + 23 − 69)/12).
   Use this table, not an equal-temperament formula. An index outside 0–96
   gives `undefined`, so the pitch becomes NaN and `| 0` turns it into 0 Hz.
-  That is probably silent for most waveforms but **not** for noise (waveform
-  5 ignores frequency), and a square buffer at playback rate 0 may hold a DC
-  value. See open question 1.
+  What that sounds like was **measured** (open question 1): silent for sine
+  and sawtooth, a DC offset shaped by the amp envelope for square (a thump
+  or click, no pitch), and unchanged noise for waveform 5.
 
 ### Stage 1: note → instruction buffer (`pxtsim/sound/song.ts`) (verified)
 
@@ -440,7 +450,7 @@ handle escapes and non-ASCII).
 ## 4. Synthesizer (`audio.py`) and `render` / `tune ... --wav`
 
 ```
-midi2mkcd render INPUT [-p PARAMS] -o OUT.wav [--rate 44100] [--no-velocity] [-v]
+midi2mkcd render INPUT [-p PARAMS] -o OUT.wav [--rate 48000] [--no-velocity] [-v]
     # INPUT: a .mid file (converted first, with -p), or a .ts/.txt file with exactly one hex`...`
 midi2mkcd tune replace INPUT.mid ... [--wav OUT.wav]
 midi2mkcd tune sample  INPUT.mid ... [--wav OUT.wav]
@@ -452,8 +462,8 @@ midi2mkcd tune sample  INPUT.mid ... [--wav OUT.wav]
 def note_instructions(instrument: Instrument, note_index: int, gate_ms: float, volume: float) -> bytes
 def drum_instructions(drum: DrumInstrument, volume: float) -> bytes
 def song_events(song: Song, *, use_velocity: bool = True) -> list[tuple[float, bytes]]   # (start ms, instructions)
-def synthesize(events: Iterable[tuple[float, bytes]], rate: int = 44100) -> np.ndarray      # float32 mono
-def render_song(song: Song, rate: int = 44100, *, use_velocity: bool = True) -> np.ndarray
+def synthesize(events: Iterable[tuple[float, bytes]], rate: int = 48000) -> np.ndarray      # float32 mono
+def render_song(song: Song, rate: int = 48000, *, use_velocity: bool = True) -> np.ndarray
 def to_wav_bytes(samples: np.ndarray, rate: int) -> bytes                                   # stdlib `wave`
 ```
 
@@ -527,7 +537,11 @@ Stage 2 implementation notes:
 2. **Stage 2, perceptual.** Build a few test songs (one per waveform at low,
    middle and high notes; envelope and LFO cases; each drum type), record them
    from the simulator by hand into `testing/` (gitignored), and compare
-   spectrograms and RMS envelopes with a script. Expect several "slightly off"
+   spectrograms and RMS envelopes with a script. A screen recording works:
+   `ffmpeg -i rec.mkv -map 0:a:0 -ac 1 -ar 48000 -c:a pcm_f32le rec.wav`,
+   then analyse with numpy/scipy via `uv run --with scipy`. Put a few marker
+   notes before the song so its start is easy to find, and remember note
+   starts are 20 ms per tick (Stage 0). Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
 3. Tests in CI: stage-1 goldens; stage 2 sanity checks (a sine note's peak
@@ -562,8 +576,8 @@ song. Lives under `params` because it exports a params file, not a song.
   are louder in the SF2 than in Arcade; velocity layers can model that if
   needed.
 - **Default note range MIDI 23–119** (the simulator's frequency table).
-  What notes outside it do in the simulator is open question 1; until it is
-  answered, leave them unmapped in the SF2.
+  Outside it the simulator gives no pitch (open question 1, measured), so
+  leave those keys unmapped in the SF2.
 - `--step N` (**default 1**: every note rendered) renders every Nth note and lets the SF2 pitch-shift the rest
   (keyRange + overridingRootKey). Against the simulator this is acceptable:
   triangle/saw/sine are band-limited there anyway, so per-note rendering only
@@ -768,18 +782,26 @@ working).
 
 ## 7. Open questions (check before relying on them)
 
-1. **Notes outside MIDI 23–119.** The converter can emit Arcade note indices
-   below 0 or above 96 (MIDI < 23 or > 119). In the simulator these index
-   past the `frequencies` table, so the pitch becomes 0 Hz. Expected: silent
-   for sine/triangle/saw, possibly a click or DC for squares, and **still
-   audible for noise** (waveform 5 ignores frequency). Test song:
-   `testing/range_test/make_range_test.py` (gitignored, local) builds
-   `range_test.mid`, where sine (program 4), square_50 (16), sawtooth (20)
-   and noise (121) each play MIDI 60, 21, 22, 23, 24, 60, 117–121, 127, every
-   note 0.5 s with 0.5 s gaps. Convert with `-f code`, play it in the
-   editor, and note which notes sound. Then have `render` reproduce exactly
-   that (and log a count of out-of-range notes), and consider a converter
-   warning on `result.warnings`.
+1. ~~**Notes outside MIDI 23–119.**~~ **Measured** (2026-11-20) from a
+   screen recording of the simulator playing `testing/range_test/range_test.mid`
+   (gitignored, built by `make_range_test.py` there): sine (program 4),
+   square_50 (16), sawtooth (20) and noise (121) each playing MIDI 60, 21,
+   22, 23, 24, 60, 117–121, 127. Results:
+   - MIDI 23–119 play at the table frequencies (31, 33, 262, 7040, 7459,
+     7902 Hz measured) for every waveform.
+   - MIDI 120, 121, 127 (indices 97–104): **sine and sawtooth digitally
+     silent**; **square** outputs a DC offset (+0.07 to +0.13) scaled by the
+     amp envelope, heard as a thump or click with no pitch; **noise** plays
+     exactly as in range.
+   - MIDI 21 and 22 never reached Arcade: **the converter dropped them**
+     (open question 8, now fixed; they would now play at no pitch, like
+     120–127).
+   So `render` must reproduce this: 0 Hz for out-of-range indices, which
+   the oscillator/buffer model then gives naturally (silent sine/saw/
+   triangle, DC for squares at playback rate 0, noise unaffected); log a
+   count of out-of-range notes. A converter warning on `result.warnings`
+   for out-of-range melodic notes (except noise instruments) is worth
+   adding.
 2. ~~**Does stable Arcade read the velocity section?**~~ Answered: yes,
    per-chord velocity is now generally available in stable Arcade (README
    updated). `render` honours velocity by default.
@@ -796,12 +818,19 @@ working).
    reader). numpy and scipy are expected to have cp314 wheels and cma is
    pure Python; confirm with `uv add` when each is added. (The Pyodide half
    of this question is moot while the web page is out of scope.)
-7. **`render`'s default sample rate.** Use whatever rate the simulator's
-   `AudioContext` runs at on the user's machine. To check: open the editor,
-   open the browser devtools console and run `new AudioContext().sampleRate`
-   (the simulator iframe's context uses the same default output rate). On
-   Windows this follows the output device's "Default Format" in Sound
-   settings. Until then, 44100.
+7. ~~**`render`'s default sample rate.**~~ Answered: the user's simulator
+   runs at **48000 Hz**, so `render --rate` defaults to 48000 (the
+   recording above was also 48 kHz). Others can check theirs with
+   `new AudioContext().sampleRate` in the browser console.
+8. ~~**Converter bug: range splitting drops and duplicates notes.**~~ Fixed.
+   `timeline_split_tracks_for_ranges` used to cut a too-wide track into
+   `[0, 64)`, `[60, 124)` and `[124, 128)`, but in **shifted** note numbers
+   (MIDI − 23), so notes below MIDI 23 were dropped and MIDI 83–86 played
+   twice. It now covers the notes greedily with the real octave windows
+   (`processor.py::_split_by_octave_windows`): every note lands in exactly
+   one track, with the fewest tracks. Covered by
+   `test_api.py::test_range_splitting_keeps_every_note_once`. Goldens are
+   unchanged (the fixture doesn't split by range).
 
 ## 8. Corrections to earlier notes (so they are not reintroduced)
 
@@ -819,3 +848,5 @@ working).
   frequency table starting at B0 (MIDI 23).
 - Audio code goes in `audio.py`, not `render.py` (which is text output).
 - A waveform-0 instruction is a silent rest, not the end of the buffer.
+- Song ticks are 20 ms in the simulator, not 20.833 ms (setInterval
+  truncation), so songs play 4% fast.

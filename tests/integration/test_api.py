@@ -19,6 +19,7 @@ from midi2mkcd import (
     default_instrument_params_text,
     load_instrument_params,
 )
+from midi2mkcd.arcade.music import decode_song_from_hex
 
 MIDI = FIXTURE_MIDI.read_bytes()
 EXPECTED_HEX = (GOLDEN / "hex.ts").read_text(encoding="utf-8")
@@ -155,6 +156,42 @@ def test_drum_map_is_right_for_every_drum_track() -> None:
         for event in track.notes:
             recovered.update(drum_map[n.note] for n in event.notes)
     assert recovered == hits
+
+
+def every_note_midi(notes: range) -> bytes:
+    """One melodic program playing each note in `notes` once, one after another."""
+    mid = MidiFile(type=0, ticks_per_beat=480)
+    track = MidiTrack()
+    mid.tracks.append(track)
+    for i, note in enumerate(notes):
+        gap = 0 if i == 0 else 40  # two song ticks of silence between notes
+        track.append(Message("note_on", channel=0, note=note, velocity=100, time=gap))
+        track.append(Message("note_off", channel=0, note=note, velocity=0, time=40))
+    buf = io.BytesIO()
+    mid.save(file=buf)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("notes", "tracks"),
+    [
+        # Shifted (MIDI - 23) -23..104: windows -24..39, 36..99, 96..159
+        (range(128), 3),
+        (range(23), 1),
+        # 37..104: windows 36..99, 96..159
+        (range(60, 128), 2),
+        # -3..66 covers the old [0, 64) / [60, 124) overlap: windows -12..51, 48..111
+        (range(20, 90), 2),
+    ],
+    ids=["all", "below table", "upper half", "across the old overlap"],
+)
+def test_range_splitting_keeps_every_note_once(notes: range, tracks: int) -> None:
+    result = convert(every_note_midi(notes))
+    # Decode the encoded song, so octave offsets and note bytes are checked too
+    song = decode_song_from_hex(result.to_hex())
+    played = Counter(n.note + 23 for t in song.tracks for e in t.notes for n in e.notes)
+    assert played == Counter(notes)
+    assert len(song.tracks) == tracks
 
 
 def test_version_matches_installed_metadata() -> None:
