@@ -14,6 +14,7 @@ from midi2mkcd.arcade.music_types import (
     Song,
     Track,
 )
+from midi2mkcd.errors import InstrumentParamsError
 from midi2mkcd.midi_to_song.instruments import (
     InstrumentParameterMapping as InstrumentParameterMapping,
 )
@@ -23,7 +24,6 @@ from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteNoteWithTick,
     AbsoluteTimeMessage,
     AbsoluteTimeMessageWithInstrument,
-    TestingOptionsForMIDIToSong,
 )
 from midi2mkcd.midi_to_song.models import (
     AbsoluteCompleteLyricWithTick as AbsoluteCompleteLyricWithTick,
@@ -50,9 +50,8 @@ from midi2mkcd.midi_to_song.timeline.validation import (
     timeline_checks,
     timeline_lyrics_checks,
 )
-from midi2mkcd.utils.logger import create_logger
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,10 +69,44 @@ class ConvertMIDIToSongResult:
     lyric_texts: list[str]
 
 
+def check_instruments_are_mapped(
+    notes: list[AbsoluteCompleteNote], mapping: InstrumentParameterMapping
+) -> None:
+    """
+    Make sure every melodic instrument and drum note used by the song has parameters.
+
+    :param notes: The complete notes of the song, before the pitch shift.
+    :param mapping: An `InstrumentParameterMapping` object, loaded from
+     `load_instrument_params`.
+    :raises InstrumentParamsError: If any instrument or drum note has no parameters.
+    """
+    missing_melodics = sorted(
+        {
+            n.instrument
+            for n in notes
+            if not n.is_drum and n.instrument not in mapping.melodic_instruments
+        }
+    )
+    missing_drums = sorted(
+        {n.note for n in notes if n.is_drum and n.note not in mapping.drum_instruments}
+    )
+    problems = []
+    if missing_melodics:
+        problems.append(f"MIDI instruments {', '.join(map(str, missing_melodics))}")
+    if missing_drums:
+        problems.append(f"MIDI drum notes {', '.join(map(str, missing_drums))}")
+    if problems:
+        raise InstrumentParamsError(
+            f"No instrument parameters for {' and '.join(problems)}"
+        )
+
+
 def convert_midi_to_song(
     midi_song: MidiFile,
     mapping: InstrumentParameterMapping,
-    testing_opts: TestingOptionsForMIDIToSong | None = None,
+    *,
+    replace_melodics: int | None = None,
+    replace_drums: int | None = None,
 ) -> ConvertMIDIToSongResult:
     """
     Convert a MIDI file into a MakeCode Arcade song.
@@ -81,13 +114,16 @@ def convert_midi_to_song(
     :param midi_song: A `MidiFile` object.
     :param mapping: An `InstrumentParameterMapping` object, loaded from
      `load_instrument_params`.
-    :param testing_opts: Extra options used for testing, passed from the CLI.
+    :param replace_melodics: If set, every melodic note is played by this MIDI
+     program instead (used by the tuning tools).
+    :param replace_drums: If set, every drum note is replaced with this MIDI drum
+     note (used by the tuning tools).
     :return: A convertMIDIToSongResult data class.
+    :raises InstrumentParamsError: If the song uses an instrument or drum note that
+     has no parameters in `mapping`.
+    :raises SongConstraintError: If the song cannot fit MakeCode Arcade's format.
     """
     logger.debug("Converting MIDI file into MakeCode Arcade song")
-
-    if testing_opts is None:
-        testing_opts = TestingOptionsForMIDIToSong()
 
     song = Song(
         measures=1,
@@ -107,22 +143,20 @@ def convert_midi_to_song(
         global_timeline_0
     )
 
-    if testing_opts.replace_all_melodics_with is not None:
+    if replace_melodics is not None:
         logger.debug(
-            f"Testing option enabled to replace all melodic instruments with "
-            f"MIDI instrument {testing_opts.replace_all_melodics_with}"
+            f"Replacing all melodic instruments with MIDI instrument {replace_melodics}"
         )
         for m in global_timeline_1:
             if not m.is_drum:
-                m.instrument = testing_opts.replace_all_melodics_with
-    if testing_opts.replace_all_drums_with is not None:
-        logger.debug(
-            f"Testing option enabled to replace all drum notes with MIDI drum "
-            f"note {testing_opts.replace_all_drums_with}"
-        )
+                m.instrument = replace_melodics
+    if replace_drums is not None:
+        logger.debug(f"Replacing all drum notes with MIDI drum note {replace_drums}")
         for m in global_timeline_1:
             if m.is_drum:
-                m.note = testing_opts.replace_all_drums_with
+                m.note = replace_drums
+
+    check_instruments_are_mapped(global_timeline_1, mapping)
 
     # MIDI file with C4 (MIDI 60) plays at B5 (MIDI 83)
     # This is because MakeCode Arcade defines C4 as 49 instead of 60
@@ -219,7 +253,7 @@ def convert_midi_to_song(
                     instrument.octave = potential_offset
                     break
             else:
-                raise ValueError("Track range too big to fit! (please report)")
+                raise RuntimeError("Track range too big to fit! (please report)")
             # none for melodic instrument
             drums = None
             # Record the MIDI instrument

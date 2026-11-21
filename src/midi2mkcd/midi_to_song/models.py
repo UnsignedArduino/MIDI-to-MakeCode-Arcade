@@ -6,9 +6,7 @@ from enum import IntEnum
 
 from mido import Message
 
-from midi2mkcd.utils.logger import create_logger
-
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # All intermediate representations used during conversion
@@ -101,15 +99,3 @@ class AbsoluteCompleteChordWithTick:
 
     instrument: int
     is_drum: bool
-
-
-@dataclass
-class TestingOptionsForLoadInstrumentParams:
-    force_load: bool | None = False
-
-
-@dataclass
-class TestingOptionsForMIDIToSong:
-    replace_all_melodics_with: int | None = None
-    replace_all_drums_with: int | None = None
-    generate_code: bool | None = False

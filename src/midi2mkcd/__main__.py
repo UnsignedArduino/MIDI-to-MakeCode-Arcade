@@ -1,3 +1,3 @@
-from midi2mkcd.main import main
+from midi2mkcd.cli import main
 
-main()
+raise SystemExit(main())

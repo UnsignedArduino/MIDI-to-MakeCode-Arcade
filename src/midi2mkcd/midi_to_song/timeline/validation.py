@@ -1,14 +1,14 @@
 import logging
 
 from midi2mkcd.arcade.music_types import Song
+from midi2mkcd.errors import SongConstraintError
 from midi2mkcd.midi_to_song import (
     AbsoluteCompleteLyricWithTick,
     InstrumentParameterMapping,
 )
 from midi2mkcd.midi_to_song.models import AbsoluteCompleteChordWithTick
-from midi2mkcd.utils.logger import create_logger
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def timeline_checks(
@@ -25,18 +25,19 @@ def timeline_checks(
     :param timeline: A list of lists of `AbsoluteCompleteChordWithTick` objects.
     :param mapping: An `InstrumentParameterMapping` object, loaded from
      `load_instrument_params`.
-    :raises ValueError: If any violations are detected.
+    :raises SongConstraintError: If the song cannot fit MakeCode Arcade's format.
+    :raises RuntimeError: If an internal invariant is violated (a bug).
     """
     logger.debug("Running checks on the timeline")
     # Track count must be less than 256
     if len(timeline) > 255:
-        raise ValueError(
+        raise SongConstraintError(
             f"Too many tracks in the timeline! (max of 255, found "
             f"{len(timeline)}) Reduce polyphony or unique instruments."
         )
     for track in timeline:
         if len(track) == 0:
-            raise Warning("Empty track in the timeline!")
+            raise SongConstraintError("Empty track in the timeline!")
         track_is_drum = track[0].is_drum
         # Sort by start tick as required, just in case
         track.sort(key=lambda c: c.start_tick)
@@ -45,7 +46,7 @@ def timeline_checks(
             [chord.start_tick for chord in track] + [chord.end_tick for chord in track]
         )
         if highest_tick > 65535:
-            raise ValueError(
+            raise SongConstraintError(
                 f"Chord start or end tick is too high! (max of 65535, "
                 f"found {highest_tick}) Decrease song length or reduce "
                 f"BPM/TPB at the cost of worse timing."
@@ -54,7 +55,7 @@ def timeline_checks(
         # (5 bytes header + 1 byte per note for each chord)
         note_byte_length = sum(5 + len(chord.notes) for chord in track)
         if note_byte_length > 65535:
-            raise ValueError(
+            raise SongConstraintError(
                 f"Track's note events are too large to encode! (max of "
                 f"65535 bytes, found {note_byte_length} bytes) Reduce "
                 f"polyphony or song length."
@@ -73,17 +74,17 @@ def timeline_checks(
                 )
 
             if not any(octave_offset_work(o) for o in range(10)):
-                raise ValueError("Track range too big to fit! (please report)")
+                raise RuntimeError("Track range too big to fit! (please report)")
         # Chord must have less than 256 notes
         max_chord_polyphony = max(len(chord.notes) for chord in track)
         if max_chord_polyphony > 255:
-            raise ValueError(
+            raise SongConstraintError(
                 f"Chord has too many notes! (max of 255, found {max_chord_polyphony})"
             )
         # Chords must last at least 1 tick
         min_chord_duration = min(chord.end_tick - chord.start_tick for chord in track)
         if min_chord_duration < 1:
-            raise ValueError(
+            raise RuntimeError(
                 f"Chord violated minimum duration time! (min of 1 tick, "
                 f"found {min_chord_duration} ticks, please report)"
             )
@@ -91,11 +92,13 @@ def timeline_checks(
         # marked as drums in a drum track
         if track_is_drum:
             if any(not chord.is_drum for chord in track):
-                raise ValueError("Found non drum chord in drum track! (please report")
+                raise RuntimeError(
+                    "Found non drum chord in drum track! (please report)"
+                )
         else:
             instruments = {chord.instrument for chord in track}
             if len(instruments) > 1:
-                raise ValueError(
+                raise RuntimeError(
                     f"Track has more than one instrument! (found "
                     f"{len(instruments)}, please report)"
                 )
@@ -114,7 +117,7 @@ def timeline_checks(
             if any(
                 (not (attack < (chord_time + release))) for chord_time in chord_times
             ):
-                raise ValueError(
+                raise RuntimeError(
                     "Found chord where instrument's attack time >= "
                     "gate length + release time! (please report)"
                 )
@@ -135,7 +138,7 @@ def timeline_lyrics_checks(
      correctly configured BPM and TPM.
     :param timeline: A list of lists of `AbsoluteCompleteChordWithTick` objects.
     :param timeline_lyrics: A list of lists of `AbsoluteCompleteLyricWithTick` objects.
-    :raises ValueError: If any violatiosn are detected.
+    :raises SongConstraintError: If any violations are detected.
     """
     # logger.debug("Running checks on the timeline lyrics")
 

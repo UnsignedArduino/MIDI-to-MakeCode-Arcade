@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "midi2mkcd"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Convert a MIDI file to a MakeCode Arcade song!"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -15,12 +15,16 @@ dependencies = [
 
 
 [project.scripts]
-midi2mkcd = "midi2mkcd.main:main"
+midi2mkcd = "midi2mkcd.cli:main"
 
 [project.optional-dependencies]
 optional = [
     "pyperclip>=1.11.0",
 ]
+
+[tool.hatch.version]
+# Single source of truth: midi2mkcd.__version__
+path = "src/midi2mkcd/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/midi2mkcd"]
@@ -29,6 +33,7 @@ packages = ["src/midi2mkcd"]
 dev = [
     "mypy>=2.3.0",
     "pre-commit>=4.6.1",
+    "pytest>=9.2.0",
     "ruff>=0.16.0",
     "types-pyperclip>=1.11.0.20260508",
     "types-pyyaml>=6.0.12.20260724",
@@ -36,11 +41,25 @@ dev = [
 
 [tool.ruff]
 target-version = "py314"
+# Its Python blocks are design sketches, not code to keep formatted
+extend-exclude = ["REFACTOR_PLAN.md"]
 
 [tool.mypy]
 python_version = "3.14"
 strict = true
+# tests import their shared `helpers` module by name (pytest puts tests/ on the path)
+mypy_path = "tests"
 
 [[tool.mypy.overrides]]
 module = ["mido.*"]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]
+filterwarnings = ["error"]
+# Applied by directory in tests/conftest.py, so tests don't need to mark themselves
+markers = [
+    "unit: fast tests of single functions under tests/unit",
+    "integration: tests under tests/integration that convert a whole MIDI file",
+]

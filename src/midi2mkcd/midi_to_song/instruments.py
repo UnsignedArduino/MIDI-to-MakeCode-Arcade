@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from enum import IntEnum
 
-from yaml import safe_load
+from yaml import YAMLError, safe_load
 
 from midi2mkcd.arcade.music_types import (
     LFO,
@@ -11,10 +11,9 @@ from midi2mkcd.arcade.music_types import (
     Envelope,
     Instrument,
 )
-from midi2mkcd.midi_to_song.models import TestingOptionsForLoadInstrumentParams
-from midi2mkcd.utils.logger import create_logger
+from midi2mkcd.errors import InstrumentParamsError
 
-logger = create_logger(name=__name__, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,31 +51,58 @@ def waveform_from_str(w: str) -> WaveForm:
 
     :param w: A string like "triangle" or "sine".
     :return: A `WaveForm` enum value.
+    :raises InstrumentParamsError: If the string isn't a known waveform name.
     """
     w = w.lower()
     if w == "square":
         w = "square_50"
     if w == "noise_tunable_2":
         w = "cycle_64"
-    return {
-        "triangle": WaveForm.TRIANGLE,
-        "sawtooth": WaveForm.SAWTOOTH,
-        "sine": WaveForm.SINE,
-        "noise_tunable": WaveForm.NOISE_TUNABLE,
-        "noise": WaveForm.NOISE,
-        "square_10": WaveForm.SQUARE_10,
-        "square_20": WaveForm.SQUARE_20,
-        "square_30": WaveForm.SQUARE_30,
-        "square_40": WaveForm.SQUARE_40,
-        "square_50": WaveForm.SQUARE_50,
-        "cycle_16": WaveForm.CYCLE_16,
-        "cycle_32": WaveForm.CYCLE_32,
-        "cycle_64": WaveForm.CYCLE_64,
-    }[w]
+    try:
+        return _WAVEFORMS_BY_NAME[w]
+    except KeyError:
+        raise InstrumentParamsError(f"Unknown waveform: {w!r}") from None
+
+
+def _entry_error(kind: str, key: str, entry: object, e: Exception) -> str:
+    """
+    Describe an invalid instrument entry from the YAML for an error message.
+
+    :param kind: "melodic instrument" or "drum instrument".
+    :param key: The YAML key that identifies the entry ("instrument" or "note").
+    :param entry: The entry as parsed from the YAML.
+    :param e: The exception raised while loading the entry.
+    :return: A human-readable message.
+    """
+    ident = entry.get(key, "?") if isinstance(entry, dict) else "?"
+    if isinstance(e, InstrumentParamsError):
+        detail = str(e)
+    elif isinstance(e, KeyError):
+        detail = f"missing field {e}"
+    else:
+        detail = f"{type(e).__name__}: {e}"
+    return f"Invalid {kind} entry ({key} {ident}): {detail}"
+
+
+_WAVEFORMS_BY_NAME = {
+    "triangle": WaveForm.TRIANGLE,
+    "sawtooth": WaveForm.SAWTOOTH,
+    "sine": WaveForm.SINE,
+    "noise_tunable": WaveForm.NOISE_TUNABLE,
+    "noise": WaveForm.NOISE,
+    "square_10": WaveForm.SQUARE_10,
+    "square_20": WaveForm.SQUARE_20,
+    "square_30": WaveForm.SQUARE_30,
+    "square_40": WaveForm.SQUARE_40,
+    "square_50": WaveForm.SQUARE_50,
+    "cycle_16": WaveForm.CYCLE_16,
+    "cycle_32": WaveForm.CYCLE_32,
+    "cycle_64": WaveForm.CYCLE_64,
+}
 
 
 def load_instrument_params(
-    yaml_text: str, testing_opts: TestingOptionsForLoadInstrumentParams | None = None
+    yaml_text: str, *, allow_incomplete: bool = False
 ) -> InstrumentParameterMapping:
     """
     Take a YAML file specifying instrument data and return an instrument parameter
@@ -84,15 +110,49 @@ def load_instrument_params(
     necessary for the full MIDI range (use octave offset 2 and 7 for full range)
 
     :param yaml_text: String holding the YAML file's text.
-    :param testing_opts: Extra options used for testing, passed from the CLI.
+    :param allow_incomplete: Skip entries that are missing fields or invalid instead
+     of raising. The top-level structure is still checked.
     :return: An `InstrumentParameterMapping` object.
+    :raises InstrumentParamsError: If the YAML can't be parsed, the top level is
+     malformed, or (without `allow_incomplete`) an entry is missing or has invalid
+     fields.
     """
-    if testing_opts is None:
-        testing_opts = TestingOptionsForLoadInstrumentParams()
+    mapping, _ = load_instrument_params_with_problems(
+        yaml_text, allow_incomplete=allow_incomplete
+    )
+    return mapping
+
+
+def load_instrument_params_with_problems(
+    yaml_text: str, *, allow_incomplete: bool = False
+) -> tuple[InstrumentParameterMapping, list[str]]:
+    """
+    Like `load_instrument_params`, but also return a message for every entry that
+    was skipped because `allow_incomplete` is set.
+
+    :param yaml_text: String holding the YAML file's text.
+    :param allow_incomplete: Skip invalid entries instead of raising.
+    :return: The mapping, and the messages for the skipped entries.
+    :raises InstrumentParamsError: See `load_instrument_params`.
+    """
+    skipped: list[str] = []
     logger.debug(
         f"Loading instrument parameters from {len(yaml_text)} characters of YAML text"
     )
-    data = safe_load(yaml_text)
+    try:
+        data = safe_load(yaml_text)
+    except YAMLError as e:
+        raise InstrumentParamsError(f"Invalid instrument params YAML: {e}") from e
+
+    if not isinstance(data, dict):
+        raise InstrumentParamsError(
+            "Invalid instrument params: expected a mapping at the top level"
+        )
+    for section in ("melodic_instruments", "drum_instruments"):
+        if not isinstance(data.get(section), list):
+            raise InstrumentParamsError(
+                f"Invalid instrument params: '{section}' must be a list"
+            )
 
     melodic_pitch_comp_k = data.get("melodic_pitch_comp_k", 0)
     logger.debug(f"{melodic_pitch_comp_k=}")
@@ -137,12 +197,12 @@ def load_instrument_params(
                     amplitude=instr["pitch_lfo"]["amplitude"],
                 ),
             )
-        except Exception:
-            if not testing_opts.force_load:
-                raise
-            # else:
-            #     logger.warning(f"Error loading melodic instrument "
-            #                    f"{instr['instrument']}: {e}. Skipping.")
+        except Exception as e:
+            message = _entry_error("melodic instrument", "instrument", instr, e)
+            if not allow_incomplete:
+                raise InstrumentParamsError(message) from e
+            logger.debug(f"Skipping: {message}")
+            skipped.append(message)
 
     logger.debug(
         f"Creating mappings for {len(data['drum_instruments'])} drum instruments"
@@ -163,8 +223,11 @@ def load_instrument_params(
                     for step in sample["steps"]
                 ],
             )
-        except Exception:
-            if not testing_opts.force_load:
-                raise
+        except Exception as e:
+            message = _entry_error("drum instrument", "note", sample, e)
+            if not allow_incomplete:
+                raise InstrumentParamsError(message) from e
+            logger.debug(f"Skipping: {message}")
+            skipped.append(message)
 
-    return mapping
+    return mapping, skipped
