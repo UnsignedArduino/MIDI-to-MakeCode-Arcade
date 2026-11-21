@@ -188,10 +188,10 @@ melodic note byte: low 6 bits = note - (octave - 2) * 12; high 2 bits = enharmon
   `tests/unit/test_import_hygiene.py`: `import midi2mkcd` must not import
   numpy, scipy or cma.
 - **Checks.** `uv run pytest`, `uv run ruff check .`, `uv run ruff format
-  --check src tests`, `uv run mypy src tests` (strict) and `uv run pre-commit
-  run --all-files` must pass. Add this file to `[tool.ruff] extend-exclude`
-  in `pyproject.toml` like `REFACTOR_PLAN.md`, since its Python blocks are
-  sketches.
+  --check .`, `uv run mypy src tests` (strict) and `uv run pre-commit run
+  --all-files` must pass (CI runs the ruff checks on `.`). This file is
+  already in `[tool.ruff] extend-exclude` in `pyproject.toml`, since its
+  Python blocks are sketches.
 - **Tests** live only in `tests/unit/` or `tests/integration/` (the conftest
   rejects anything else and marks tiers by directory). Shared paths are in
   `tests/helpers.py`. Golden files are LF-only (`.gitattributes`); never
@@ -249,15 +249,19 @@ Call path for one song note in the simulator **(verified)**:
 - `frequencies` is a table of **integer Hz**, 97 entries, index 0 = B0
   (31 Hz) … index 96 = B8 (7902 Hz); index i ≈ 440·2^((i + 23 − 69)/12).
   Use this table, not an equal-temperament formula. An index outside 0–96
-  gives `undefined` → NaN, which `| 0` turns into 0 Hz (silent). See open
-  questions.
+  gives `undefined`, so the pitch becomes NaN and `| 0` turns it into 0 Hz.
+  That is probably silent for most waveforms but **not** for noise (waveform
+  5 ignores frequency), and a square buffer at playback rate 0 may hold a DC
+  value. See open question 1.
 
 ### Stage 1: note → instruction buffer (`pxtsim/sound/song.ts`) (verified)
 
 An instruction is 12 bytes, little-endian 16-bit fields:
 `[0] waveform, [1] flags (0), [2] start Hz, [4] duration ms, [6] start volume,
-[8] end volume, [10] end Hz`. Each is one linear ramp. A 0 waveform byte ends
-the buffer.
+[8] end volume, [10] end Hz`. Each is one linear ramp. The player reads to
+the end of the buffer; an instruction with waveform 0 is a **silent rest** of
+its duration (it advances time and keeps going), not a terminator
+(`playInstructions.ts`, verified).
 
 `renderInstrument(instrument, noteFrequency, gateLength, volume)`:
 
@@ -329,11 +333,22 @@ Per instruction:
   - **noise 5**: a 100000-sample xorshift white-noise buffer (seed
     `0xf01ba80`, `x ^= x << 13; x ^= x >> 17; x ^= x << 5`, sample =
     `(x & 1023) / 512 - 1`), looped, playback rate 1 (ignores frequency).
-  - Buffer sources ramp `playbackRate` with `linearRampToValueAtTime`; check
-    the source for whether a start value is set first.
+  - **Buffer sources (4, 5, 11–18) set `playbackRate` only once**, from the
+    start frequency of the first instruction that creates that waveform's
+    generator (`getGenerator`). After that each instruction only calls
+    `linearRampToValueAtTime(end)`, with no `setValueAtTime(start)`, so the
+    ramp starts from wherever that generator last was. Oscillators (1–3) do
+    call `setValueAtTime(start)` each time. Melodic notes are unaffected
+    (each instruction starts where the previous one ended). For drums that
+    switch waveforms and come back, the returning waveform ramps from its
+    own previous end, across the time it was silent. So `synthesize` must
+    keep the playback rate (and phase) per waveform per note (verified).
   - Copy the exact buffer-generation code for 4, 5 and 16–18 from
     `playInstructions.ts`; the RNG and bit patterns must match.
-- Sample rate is the `AudioContext`'s (usually 44100 or 48000).
+- Sample rate is the `AudioContext`'s (usually 44100 or 48000). All buffers
+  (including the 100000-sample noise buffer, played at rate 1) are created at
+  that rate, so noise sounds slightly different at each. See open question 7
+  for `render`'s default.
 
 The hardware (`melody.cpp`) differs: naive fixed-point waveforms, no `/ 4` or
 square halving that I verified, its own mixer and clipping. Do not mix the two
@@ -398,8 +413,12 @@ handle escapes and non-ASCII).
 - **Timing:** write one tempo event (120 BPM) at 480 ticks/beat; song tick t
   → MIDI tick `t * 480 // 24`. Note lengths are the quantized, gate-fixed ones.
 - **Channels:** drums on channel 10 (index 9). Melodic programs on the other
-  15; if there are more than 15 programs, reuse channels with program changes
-  between non-overlapping uses, or use a second MIDI track/port, and log it.
+  15 channels of port 0. If there are more than 15 programs, the extra
+  programs go on a **second MIDI port** (a separate MIDI track with a
+  `midi_port` meta event, port 1, same channel layout, drums only on port 0),
+  and so on for every further 15; log it at INFO. Check that the converter's
+  parser reads `midi_port` back (it resolves per-port/channel state), so the
+  recovered file converts again.
 - Library: `recover_midi.py::song_to_midi(text: str, params: ParamsInput = None) -> bytes`
   plus the text-extraction helper (maybe `utils/song_text.py`, shared with
   `render`). Not re-exported from the package root unless it proves generally
@@ -469,10 +488,21 @@ Stage 2 implementation notes:
 
 ### CLI behaviour
 
-- `render` with a `.mid` input runs `convert()` (honouring `-p`) and renders
-  `result.song`; with a text input it decodes the single hex literal (shared
-  helper from `recover-midi`). Decide the input type by trying MIDI first, or
-  by extension; whichever, document it and test both.
+- **Input type is decided by content, never the extension:**
+  1. Starts with `MThd`: a MIDI file. Run `convert()` (honouring `-p`) and
+     render `result.song`.
+  2. Starts with `RIFF` and has form type `RMID` at bytes 8–11: a RIFF MIDI
+     (`.rmi`). Fail with a `Midi2MkcdError` saying RIFF MIDI isn't supported
+     (and that the inner MIDI can be extracted with another tool).
+  3. Otherwise decode as UTF-8 and extract the single ``hex`...` `` literal
+     (shared helper from `recover-midi`). A decode failure or no literal is a
+     `Midi2MkcdError` saying the input is neither MIDI nor a song file.
+  - **`-p` with a text input fails** (`Midi2MkcdError`, exit 1): the
+    instruments are already in the song, so `-p` would silently do nothing.
+    It can't be an argparse usage error, since the type is only known after
+    reading the file.
+  - Test each branch: MIDI, `.rmi`, text with one literal, text with none,
+    binary garbage, text input plus `-p`.
 - `tune replace --wav OUT.wav` renders the replaced song instead of (not as
   well as) the text output. `--wav` is **mutually exclusive** with `-o`,
   `--copy` and `-f` (argparse mutually exclusive group, so it is a usage
@@ -531,10 +561,10 @@ song. Lives under `params` because it exports a params file, not a song.
   difference: Arcade clamps compensated velocities at 127, so loud low notes
   are louder in the SF2 than in Arcade; velocity layers can model that if
   needed.
-- **Default note range MIDI 23–119** (the simulator's frequency table). Notes
-  outside it are silent in the simulator (see open questions); leave them
-  unmapped in the SF2.
-- `--step N` renders every Nth note and lets the SF2 pitch-shift the rest
+- **Default note range MIDI 23–119** (the simulator's frequency table).
+  What notes outside it do in the simulator is open question 1; until it is
+  answered, leave them unmapped in the SF2.
+- `--step N` (**default 1**: every note rendered) renders every Nth note and lets the SF2 pitch-shift the rest
   (keyRange + overridingRootKey). Against the simulator this is acceptable:
   triangle/saw/sine are band-limited there anyway, so per-note rendering only
   buys aliasing accuracy for squares and noise. Noise (waveform 5) ignores
@@ -583,8 +613,11 @@ velocity layers instead, for exactness at N× the size.
 
 Mono 16-bit, `--rate 22050` default: ~44 KB per second of sample. With ~1 s
 per sample (attack + decay + loop): 128 programs × 97 notes ≈ 12.4k samples
-≈ 550 MB; `--step 3` ≈ 180 MB; drums are small. The smpl chunk must stay
-under 4 GB (32-bit RIFF sizes). Log the expected size before rendering.
+≈ 550 MB at the default `--step 1`; `--step 3` ≈ 180 MB; drums are small.
+Instruments with long attacks or decays need longer samples, so the real
+size can be larger. The smpl chunk must stay under 4 GB (32-bit RIFF sizes);
+fail before rendering if the estimate exceeds that. Log the expected size
+at INFO before rendering, and mention `--step` in that message.
 
 ### Writing the file
 
@@ -698,12 +731,36 @@ gives chorus (a constant Hz offset gives a constant beat rate across notes).
 - Fit single-layer first; only add the second layer if the loss improvement
   is audible.
 
+### Testing
+
+**By hand only for now.** `params fit` needs FluidSynth and a real SF2,
+which CI doesn't have, so it has no automated tests in this plan. Pure
+helpers it uses (the YAML splice, parameter normalisation) may still get
+unit tests if they're cheap to write.
+
 ### Output
 
 Write a params YAML containing the base file (`-p BASE` or the bundled
-default) with the fitted entry replaced, preserving comments if practical
-(otherwise write only the fitted entry and say so). Log the loss per waveform
-and the winner at INFO. Library: `tuning/fit.py` (turn `tuning.py` into a
+default) with only the fitted entry replaced, keeping everything else
+byte-identical:
+
+- The params files carry their descriptions in `_comment` keys (the file
+  header and every entry), which are ordinary data and survive a load/dump.
+  Record the fit there: the entry's new `_comment` is its GM name plus the
+  provenance, e.g. `Acoustic Grand Piano (fitted to FluidR3_GM.sf2 program
+  0, loss 12.3)`.
+- But the files also have `#` section comments (`# Pianos`) and one-line
+  flow mappings (`amp_envelope: { attack: 5, ... }`), which PyYAML's dump
+  would drop or reformat. So don't dump the whole file: **splice the text**.
+  Find the entry's block (from its `  - instrument: N` / `  - note: N` line
+  to the line before the next `  - ` or `  #` line at the same indent),
+  render the fitted entry in the same style, and replace just those lines.
+  If the entry isn't found, append it to its list and log it.
+- Load the result back with `load_instrument_params` before writing, as a
+  check.
+- No new dependency (no `ruamel.yaml`).
+
+Log the loss per waveform and the winner at INFO. Library: `tuning/fit.py` (turn `tuning.py` into a
 package, keeping `from midi2mkcd import tuning` and its current names
 working).
 
@@ -713,16 +770,22 @@ working).
 
 1. **Notes outside MIDI 23–119.** The converter can emit Arcade note indices
    below 0 or above 96 (MIDI < 23 or > 119). In the simulator these index
-   past the `frequencies` table and should be silent. Confirm in the editor;
-   if so, have `render` reproduce it (and log a count), and consider a
-   converter warning on `result.warnings`.
+   past the `frequencies` table, so the pitch becomes 0 Hz. Expected: silent
+   for sine/triangle/saw, possibly a click or DC for squares, and **still
+   audible for noise** (waveform 5 ignores frequency). Test song:
+   `testing/range_test/make_range_test.py` (gitignored, local) builds
+   `range_test.mid`, where sine (program 4), square_50 (16), sawtooth (20)
+   and noise (121) each play MIDI 60, 21, 22, 23, 24, 60, 117–121, 127, every
+   note 0.5 s with 0.5 s gaps. Convert with `-f code`, play it in the
+   editor, and note which notes sound. Then have `render` reproduce exactly
+   that (and log a count of out-of-range notes), and consider a converter
+   warning on `result.warnings`.
 2. ~~**Does stable Arcade read the velocity section?**~~ Answered: yes,
    per-chord velocity is now generally available in stable Arcade (README
    updated). `render` honours velocity by default.
-3. **Buffer-source frequency ramps.** For squares and noise generators, check
-   whether `playInstructions.ts` sets `playbackRate` at the start of each
-   instruction or only ramps from the previous value (affects drum pitch
-   sweeps).
+3. ~~**Buffer-source frequency ramps.**~~ Answered from `playInstructions.ts`:
+   buffer sources set `playbackRate` once at creation and afterwards only
+   ramp from the previous value (see Stage 2, Generators).
 4. ~~**Multi-drum-track `midiDrumNoteMap`**~~ Confirmed and fixed (see
    `recover-midi`). `tests/integration/test_api.py::test_drum_map_is_right_for_every_drum_track`
    covers it.
@@ -730,7 +793,15 @@ working).
    measure with FluidSynth and at least one MIDI editor the user actually
    uses.
 6. **Dependency wheels for Python 3.14** (numpy, scipy, cma, any SF2 test
-   reader); and for the web page, which of these Pyodide 314 ships.
+   reader). numpy and scipy are expected to have cp314 wheels and cma is
+   pure Python; confirm with `uv add` when each is added. (The Pyodide half
+   of this question is moot while the web page is out of scope.)
+7. **`render`'s default sample rate.** Use whatever rate the simulator's
+   `AudioContext` runs at on the user's machine. To check: open the editor,
+   open the browser devtools console and run `new AudioContext().sampleRate`
+   (the simulator iframe's context uses the same default output rate). On
+   Windows this follows the output device's "Default Format" in Sound
+   settings. Until then, 44100.
 
 ## 8. Corrections to earlier notes (so they are not reintroduced)
 
@@ -747,3 +818,4 @@ working).
 - The "empirical extra octave down" in the pitch shift is explained by the
   frequency table starting at B0 (MIDI 23).
 - Audio code goes in `audio.py`, not `render.py` (which is text output).
+- A waveform-0 instruction is a silent rest, not the end of the buffer.

@@ -81,9 +81,8 @@ uv run midi2mkcd convert "Never Gonna Give You Up.mid" -f code_extra
 
 `-f code_extra` writes out extra information that the visualizer above can use
 to make the visuals more accurate.
-[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example (once
-again, at the time of writing, per-chord velocity is in beta, so import into
-the beta editor if desired). In the visualizer, you can press B to switch
+[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example. In
+the visualizer, you can press B to switch
 through the main interface, the track viewer (use arrow keys to highlight a
 track if desired), and the lyric viewer. Any lyrics (lyric meta message only so
 far) in the MIDI file will also be exported.
@@ -125,8 +124,7 @@ Features:
 * MIDI ports and channels
 * Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
   track to a drum track and back (will only use the standard drum kit notes)
-* Per note velocity (MakeCode Arcade will ignore this for now, but it is song's
-  output - MakeCode Arcade beta at the time of writing supports it)
+* Per note velocity (stored per chord in the song)
 * Lyric meta messages
 
 ### Defining your own instrument parameter file
