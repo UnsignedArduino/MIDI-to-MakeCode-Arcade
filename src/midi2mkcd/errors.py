@@ -24,3 +24,10 @@ class InstrumentParamsError(Midi2MkcdError):
 
 class SongConstraintError(Midi2MkcdError):
     """The song cannot fit MakeCode Arcade's song format (too many tracks, etc.)."""
+
+
+class InvalidSongError(Midi2MkcdError):
+    """
+    A MakeCode Arcade song (or the text holding it) could not be read: no single
+    ``hex`...` `` literal, bad hex, or a buffer that doesn't decode.
+    """

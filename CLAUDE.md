@@ -13,6 +13,7 @@ uv sync                                   # create venv + install deps (incl. de
 uv run midi2mkcd convert song.mid                      # print the hex literal to stdout (bundled params)
 uv run midi2mkcd convert song.mid -p my.yaml -o out.ts # custom params; write (overwrites)
 uv run midi2mkcd convert song.mid -f code              # -f {hex,code,code_extra}; code_extra = Song-Visualizer consts
+uv run midi2mkcd recover-midi song.ts -o song.mid      # Arcade song text -> MIDI (lossy; -o required)
 uv run midi2mkcd tune report song.mid                  # instruments/drums used (GM names), ranges, params coverage
 uv run midi2mkcd tune replace song.mid --melodics 48   # every melodic note as program 48 (and/or --drums N)
 uv run midi2mkcd tune sample song.mid --melodics 40-47 # one program playing the song once per instrument
@@ -34,7 +35,7 @@ GitHub Actions (`.github/workflows/`) runs on pushes to `main` and on every PR: 
 
 ## Architecture
 
-The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/path + params YAML text or mapping → `ConversionResult`) is the public entry point, re-exported from the package root; `tuning.py` holds the instrument-tuning tools (replace, sample, report, check_params) and is not re-exported; `render.py` builds all TypeScript and report text; `errors.py` has the `Midi2MkcdError` hierarchy. `cli.py` only parses arguments (subcommands `convert`, `tune {replace,sample,report}`, `params {show,check}`), reads files, configures logging and calls one library function per command; `__main__.py` and the `midi2mkcd` script both run `cli.main`. `utils/gm_names.py` has the General MIDI instrument and drum note names.
+The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/path + params YAML text or mapping → `ConversionResult`) is the public entry point, re-exported from the package root; `tuning.py` holds the instrument-tuning tools (replace, sample, report, check_params) and is not re-exported; `song_to_midi/__init__.py::song_to_midi` (song text → MIDI bytes, the reverse of `midi_to_song`, not re-exported) reads its input with `utils/song_text.py::parse_song_text` (the single ``hex`...` `` literal plus `code_extra` consts); `render.py` builds all TypeScript and report text; `errors.py` has the `Midi2MkcdError` hierarchy. `cli.py` only parses arguments (subcommands `convert`, `recover-midi`, `tune {replace,sample,report}`, `params {show,check}`; binary outputs require `-o` and go through `_emit_bytes`, never stdout), reads files, configures logging and calls one library function per command; `__main__.py` and the `midi2mkcd` script both run `cli.main`. `utils/gm_names.py` has the General MIDI instrument and drum note names.
 
 **`midi_to_song/__init__.py::convert_midi_to_song`** is the core pipeline. It runs a chain of `timeline_*` stages, each producing a new list of typed dataclasses from `midi_to_song/models.py` (the variables are named `global_timeline_0..8`):
 

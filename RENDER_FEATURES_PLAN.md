@@ -24,6 +24,17 @@ everything else is done. Each is its own commit (or several). Apart from the
 both already done, and two-layer instruments, none of them changes the
 conversion algorithm or the existing golden outputs.
 
+### Status (update this table as each feature lands)
+
+| Feature                         | Status | Notes |
+| ------------------------------- | ------ | ----- |
+| `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
+| Synthesizer Stage 1 (section 4) | **Next** | `note_instructions` / `drum_instructions` / `song_events` + Node golden script under `tools/`. |
+| Synthesizer Stage 2, `render`, `tune ... --wav` | Not started | |
+| `params soundfont` (section 5)  | Not started | |
+| `params fit` (section 6)        | Not started | |
+| Two-layer instruments           | Deferred (last) | |
+
 Facts marked **(verified)** were read from the upstream source at the commits
 listed in "Upstream source"; everything else is design. Items under
 "Open questions" must be checked before relying on them.
@@ -45,7 +56,9 @@ src/midi2mkcd/
   tuning.py          # convert_replaced, sample_melodics, sample_drums, report, check_params,
                      #   InstrumentUsage; NOT imported by the package root
   render.py          # ALL text output: to_typescript, song_hex, sampler, usage_report
-  errors.py          # Midi2MkcdError > InvalidMidiError, InstrumentParamsError, SongConstraintError
+  song_to_midi/      # __init__.py: song_to_midi (added by recover-midi, see section 3)
+  errors.py          # Midi2MkcdError > InvalidMidiError, InstrumentParamsError, SongConstraintError,
+                     #   InvalidSongError (added by recover-midi)
   cli.py             # argparse subcommands; file I/O; logging setup; clipboard
   __main__.py
   resources/instrument_params.yaml        # bundled default params (hand-tuned)
@@ -58,7 +71,8 @@ src/midi2mkcd/
     music.py         # encode/decode of the song buffer (port of pxt pxtlib/music.ts)
     music_types.py   # Song, Track, Instrument, Envelope, LFO, NoteEvent, Note, DrumInstrument,
                      #   DrumSoundStep; byte layout documented at the top
-  utils/strings.py (parse_range, format_ranges), format.py, resources.py, gm_names.py
+  utils/strings.py (parse_range, format_ranges), format.py, resources.py, gm_names.py,
+        song_text.py (parse_song_text, added by recover-midi)
 ```
 
 Name clash to avoid: `render.py` already means **text** rendering. The audio
@@ -169,8 +183,9 @@ melodic note byte: low 6 bits = note - (octave - 2) * 12; high 2 bits = enharmon
   subcommand, shared options added by the `_add_*` helpers in `cli.py`
   (not parent parsers). `-f` stays **text formats only**. Binary outputs
   (WAV, MIDI, SF2) always require `-o` and are never written to stdout; never
-  infer a format from the `-o` extension. `_emit` stays text-only; add an
-  `_emit_bytes(data, output)` when the first binary command lands. Keep
+  infer a format from the `-o` extension. `_emit` stays text-only; binary
+  output uses `_add_binary_output` and `_emit_bytes(data, output)`, which
+  `recover-midi` added. Keep
   `INPUT` handling per subcommand (not every command takes MIDI).
 - **Exit status.** 0 success; 1 for `Midi2MkcdError` or `OSError` (`error:
   <message>` on stderr, no traceback; `-v` re-raises); 2 usage errors;
@@ -441,6 +456,75 @@ references.
 midi2mkcd recover-midi INPUT [-p PARAMS] -o OUT.mid [-v]
 ```
 
+### Status: done (2026-11-21)
+
+Implemented as designed below; don't redo it. What exists now:
+
+- `src/midi2mkcd/utils/song_text.py`: `parse_song_text(text) -> SongText`
+  (hex digits with whitespace stripped, `is_code_extra`, and the four
+  `code_extra` arrays parsed with `json.loads`). **`render` must reuse it** for
+  its text-input branch.
+- `src/midi2mkcd/song_to_midi/__init__.py` (a package, the mirror of
+  `midi_to_song/`): `song_to_midi(text, params=None) -> bytes`, imported as
+  `from midi2mkcd.song_to_midi import song_to_midi`. Not re-exported from the
+  package root.
+- `errors.py`: new `InvalidSongError(Midi2MkcdError)` (exported from the root)
+  for no/several literals, bad hex, an undecodable buffer, bad `code_extra`
+  arrays, and (CLI) a non-UTF-8 input file.
+- `processor.py`: `pitch_compensation_scale(arcade_note, k)` and
+  `PITCH_COMP_REF_NOTE` factored out of `timeline_apply_pitch_compensation`
+  (no output change). `params soundfont` should use this function too.
+- `cli.py`: `recover-midi` subcommand, `_add_binary_output` (`-o` required)
+  and `_emit_bytes(data, output)`, the pattern for `render` and
+  `params soundfont`. `_read_song_text` reads UTF-8 (BOM allowed).
+- Tests: `tests/unit/test_song_text.py`, `tests/integration/test_recover_midi.py`
+  and new cases in `test_cli.py`. Goldens are unchanged.
+- README ("Recovering a lost MIDI file", help text) and CLAUDE.md updated.
+
+Decisions made during implementation (beyond the design below):
+
+- A `code_extra` file's `trackInstrumentMap` is used only if its length and
+  its −1 entries line up with the song's tracks; otherwise it logs a WARNING
+  and falls back to matching against the params.
+- Matching compares encoded bytes (`encode_instrument(...)[:27]`, i.e. without
+  the octave byte; `encode_drum_instrument(...)` for drums), so the drum
+  `name` field and 16-bit wrapping don't matter.
+- A drum that matches no params entry has its hits **dropped** with a WARNING
+  (there is no sensible default drum note). Melodic notes outside MIDI 0–127
+  after `+ 23` are also dropped with a WARNING.
+- **Duplicates are kept**, not dropped as the design below says. Real songs
+  double parts (the same notes on two channels with one program), and Arcade
+  plays both, so dropping them lost notes. Revisit only when layered tracks
+  (section 6) exist; then drop duplicates between layer tracks only.
+- **Lanes.** The converter (like most players) ends the earliest-started
+  sounding note of a pitch at each note off (FIFO). So a same-pitch note that
+  ends before an earlier-started one (a short hit inside a long note) can't
+  share its channel: `_split_lanes` puts it in another lane, which gets its own
+  channel (for drums, channel 10 of the next port).
+- **Channels.** `_assign_slots` gives each (program, lane) part its own channel
+  while port 0 has free ones. After that, parts share a channel with parts
+  that ended before they start (a program change in between), and only then
+  spill onto further ports. Each slot is one MIDI track named after its
+  programs' GM names (`Viola / Clarinet`).
+- **Ports.** When more than one port is used, **every** note track starts with
+  a `midi_port` event, port 0 included. SpessaSynth puts a track without one on
+  the lowest port any track names. When only port-1 tracks had one, every
+  port-0 track moved to port 1 and collided with it. That swapped instruments
+  in "All I Want For Christmas Is You" (17 programs).
+- The MIDI is type 1: a conductor track (120 BPM tempo, 4/4, lyrics), then the
+  slot tracks. Lyrics are written UTF-8-encoded inside mido's latin-1 text,
+  which the converter's `decode_lyric_text` reads back (`café` round-trips).
+- **Verified round trips** (convert → `code_extra` → `song_to_midi` → convert,
+  comparing every played note as (program, start, end, pitch, velocity)):
+  exact on the fixture, on `testing/Rick Astleys Album ... Never Gonna Give You
+  Up.mid` (4439 notes) and on `testing/All_I_Want_For_Christmas_Is_You_–_Mariah_Carey.mid`
+  (9989 notes, 17 programs, 2 ports). The hex is not byte-identical: chord
+  note order and which track of a program a note lands in (the polyphony
+  split depends on input order) can change, which doesn't change what plays.
+  The tests compare played notes the same way.
+
+### Design
+
 An escape hatch for when the original MIDI is lost. Explicitly lossy; not
 meant for round trips (hence the name rather than `to-midi`). Dependencies:
 mido only (already required).
@@ -487,18 +571,23 @@ handle escapes and non-ASCII).
   it.
 - **Merging:** tracks with the same program (range splits, note-byte splits,
   and in future layered tracks; see `params fit`) merge back into one MIDI
-  channel. When merging, drop exact duplicate notes (same start, end, pitch),
-  which is what layering produces.
+  channel. ~~When merging, drop exact duplicate notes (same start, end,
+  pitch), which is what layering produces.~~ **Superseded:** duplicates are
+  kept, and same-pitch notes that can't share a channel go to extra lanes (see
+  "Status: done" above).
 - **Timing:** write one tempo event (120 BPM) at 480 ticks/beat; song tick t
   → MIDI tick `t * 480 // 24`. Note lengths are the quantized, gate-fixed ones.
 - **Channels:** drums on channel 10 (index 9). Melodic programs on the other
   15 channels of port 0. If there are more than 15 programs, the extra
   programs go on a **second MIDI port** (a separate MIDI track with a
   `midi_port` meta event, port 1, same channel layout, drums only on port 0),
-  and so on for every further 15; log it at INFO. Check that the converter's
+  and so on for every further 15; log it at INFO. (**As built:** programs that
+  don't overlap in time share channels first, extra drum lanes use channel 10
+  of further ports, and every note track names its port once there are
+  several; see "Status: done".) Check that the converter's
   parser reads `midi_port` back (it resolves per-port/channel state), so the
   recovered file converts again.
-- Library: `recover_midi.py::song_to_midi(text: str, params: ParamsInput = None) -> bytes`
+- Library: `song_to_midi/__init__.py::song_to_midi(text: str, params: ParamsInput = None) -> bytes`
   plus the text-extraction helper (maybe `utils/song_text.py`, shared with
   `render`). Not re-exported from the package root unless it proves generally
   useful.
@@ -512,7 +601,10 @@ handle escapes and non-ASCII).
   e.g. 2). Exact hex equality is not expected: undoing pitch compensation
   rounds and hits the 1–127 clamp, and re-applying the gate fix may not be
   idempotent. A `tune sample` output is rejected as multi-song; a file with no
-  literal is rejected.
+  literal is rejected. (**As built:** the tests compare every played note as
+  (program, start, end, pitch, velocity) and require an exact match, since
+  the observed velocity error was 0. Track assignment and chord order may
+  change.)
 
 ---
 
