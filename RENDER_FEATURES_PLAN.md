@@ -128,7 +128,8 @@ const lyricTexts: string[] = [...];
   per note event), written only when some event has velocity < 128. Since
   MIDI velocities top out at 127, in practice it is always written for
   converted songs. Stable MakeCode Arcade now reads it (per-chord velocity is
-  generally available). Missing velocity means 128.
+  generally available) **in the simulator**. The hardware sequencer ignores
+  it (see "Simulator vs hardware" in section 2). Missing velocity means 128.
 
 ### Song buffer layout (from `arcade/music_types.py`, port of `pxtmusic.d.ts`)
 
@@ -368,6 +369,42 @@ Per instruction:
 The hardware (`melody.cpp`) differs: naive fixed-point waveforms, no `/ 4` or
 square halving that I verified, its own mixer and clipping. Do not mix the two
 references.
+
+### Simulator vs hardware: two different sequencers (verified)
+
+`music.Song.play` in `pxt-common-packages/libs/mixer/instrument.ts` checks
+`control.deviceDalVersion() === "sim"`:
+
+- **Simulator:** `_SimulatorSequencer` hands the whole buffer to pxtsim's
+  `sequencer.ts` (Stage 0 above). This is the reference for `render`.
+- **Hardware:** a TypeScript `music.sequencer.Sequencer`
+  (`libs/mixer/sequencer.ts`) runs in the game. Per tick it calls
+  `renderInstrument`/`renderDrumInstrument` with `music.volume()` only, so
+  it **ignores the per-chord velocity section**. It then waits
+  `pause(tickToMs(1))` and plays through `melody.cpp`. Its timing therefore
+  depends on `pause` granularity and loop overhead (relevant to issue #11).
+
+**Polyphony limits:**
+
+- **Hardware:** `melody.h` has `#define MAX_SOUNDS 8` (it was 5 around
+  2020). When all 8 slots are busy, `WSynthesizer::updateQueues` takes over
+  one slot. Its comment says "expel the oldest sound", but the loop as
+  written appears to pick the slot with the **latest** `startSampleNo`.
+  Not verified on a device.
+- **Simulator, old:** `pxtsim/simlib.ts` (2024, commit `942d381`) kept at
+  most about 21 channels: once more than 20 were playing, a new sound
+  removed the oldest (`channels[0].remove()`). The forum's "20 in the
+  browser" (staff reply, June 2024) refers to this.
+- **Simulator, current:** the sound code moved to `pxtsim/sound/` in
+  February 2026 (pxt #11072, #11123). `playInstructions.ts` and
+  `audioContextManager.ts` at `v13.2.13` (the pxt-core version pxt-arcade
+  4.2.1 uses) have **no cap**: every note gets its own
+  `PlayInstructionsSource`. The calibration song's chords of up to 32 notes
+  check this. If the recording shows no cap, `render` has none either; if
+  it shows one, model it.
+- `render` targets the simulator, so the hardware limit only matters for a
+  possible later `--hardware` mode, or for a converter warning when a song
+  has more than 8 overlapping sounds.
 
 ---
 
