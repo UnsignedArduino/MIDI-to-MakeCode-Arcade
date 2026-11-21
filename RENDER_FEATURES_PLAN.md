@@ -637,6 +637,19 @@ Stage 2 implementation notes:
      peaks ~150 ms in, where the model predicts a peak at the gate (~21 ms)
      and silence by ~290 ms. Inconclusive because of the gain riding; the
      Stage 1 goldens from the real `song.ts` will settle it.
+   **Second calibration recording (same song, OBS "Application Audio
+   Capture" of Chrome):** the same gain riding, nearly to the dB (reference
+   sines −4.5/−8.4/−6.4 dB). pxt has no compressor in the song path: the
+   sequencer volume is `global × track/1024 × velocity/128`, songs only use
+   `playInstructions.ts` (the spatial/worklet path needs
+   `setSpatialAudioPlayer`, which only the spatial API calls), and no
+   `DynamicsCompressor` exists in pxt, pxt-common-packages or pxt-arcade. So
+   it is probably in Chrome's output or Windows before OBS sees it.
+   `testing/calibration/make_chain_test.py` writes `chain_test.wav`: fixed-level
+   262 Hz bursts (−3 to −21 dB and back), a 6 s steady tone and loud-after-quiet
+   pairs, with no MakeCode involved. Recording it played in Chrome the same
+   way shows whether the chain changes levels. The first note started 230 ms
+   late this time (141 ms before), so that start-up delay varies.
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
