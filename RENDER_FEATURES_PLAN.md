@@ -662,6 +662,15 @@ Stage 2 implementation notes:
    MaxxAudio) or an OBS filter. **Rule: re-run the chain test first; only
    trust level measurements from a setup where "recorded − file" is
    constant to within ~0.5 dB.**
+   **Fixed:** the culprits were Windows "Audio enhancements" and "Dolby
+   Atmos for Headphones". With both off, every burst, the steady tone and the
+   loud-after-quiet pairs record at the file level **+3.00 dB (±0.01)**. The
+   constant +3 dB is from mono→stereo playback and the stereo→mono mixdown
+   in analysis. Ratios inside one recording are exact; for absolute
+   simulator levels, subtract 3.01 dB, but confirm that Web Audio output
+   gets the same +3 dB as an `<audio>` element (for example, check that a
+   flat sine at velocity 127 measures ≈ −3.1 dBFS + 3.01 dB). The
+   calibration song must be re-recorded with this setup.
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
