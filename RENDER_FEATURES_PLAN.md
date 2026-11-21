@@ -244,7 +244,12 @@ Call path for one song note in the simulator **(verified)**:
   converted songs play **4% fast** (125 instead of 120 BPM). Gate lengths
   still use the unrounded `tickToMs` (500 ms for 24 ticks). So in `render`:
   note start = `tick * trunc(tickToMs(1))` ms, gate = `tickToMs(endTick -
-  startTick)`. (Worker timer jitter averages out offline.) Song length =
+  startTick)`. (Worker timer jitter averages out offline.) `render` copies
+  this on purpose so it sounds like the editor. Whether the converter should
+  compensate (a 125 BPM header makes a tick exactly 20 ms) depends on how
+  hardware times songs; that is tracked in
+  https://github.com/UnsignedArduino/MIDI-to-MakeCode-Arcade/issues/11 and is
+  out of scope here. Song length =
   `measures * beatsPerMeasure * ticksPerBeat` ticks. On the last tick it stops with `stop(true)`, which lets sounding
   notes finish (so render the release tails after the last tick).
 - On each tick, for each track, for each note event whose `startTick` equals
@@ -541,7 +546,17 @@ Stage 2 implementation notes:
    `ffmpeg -i rec.mkv -map 0:a:0 -ac 1 -ar 48000 -c:a pcm_f32le rec.wav`,
    then analyse with numpy/scipy via `uv run --with scipy`. Put a few marker
    notes before the song so its start is easy to find, and remember note
-   starts are 20 ms per tick (Stage 0). Expect several "slightly off"
+   starts are 20 ms per tick (Stage 0).
+   **Calibration song:** `testing/calibration/make_calibration.py` (local,
+   gitignored) writes `calibration.ts`, `calibration_params.yaml`,
+   `calibration.mid` and `manifest.json` (every event's section, label and
+   start/end song tick). It plays 4 marker beats, then: levels (all 13
+   waveforms with a flat envelope at velocity 127/64/32, each group after a
+   reference sine), polyphony (sine chords of 1–32 notes), every bundled drum
+   once, and envelope/LFO cases (amp LFO 4 Hz and 20 Hz, pitch LFO at a low
+   and a high note, a pitch envelope, attack 0, release 0, a 1-tick gate
+   shorter than the attack). About 98 s in the simulator. Its recording is
+   the reference to compare `render` against. Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
 3. Tests in CI: stage-1 goldens; stage 2 sanity checks (a sine note's peak
