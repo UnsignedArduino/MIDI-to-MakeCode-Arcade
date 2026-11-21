@@ -209,7 +209,13 @@ def convert_midi_to_song(
     next_id = 0
     highest_tick = 0
 
-    midi_drum_to_drum_idx: dict[int, int] = {}
+    # Drum indices are numbered once for the whole song (not per drum track), so that
+    # the flat midiDrumNoteMap in code_extra output is right for every drum track.
+    # Each drum track carries the song-wide drum list up to the highest index it uses.
+    drum_idx_to_midi_drum = find_all_drum_chords_used(
+        [chord for track in global_timeline_8 for chord in track]
+    )
+    midi_drum_to_drum_idx = {note: i for i, note in enumerate(drum_idx_to_midi_drum)}
     track_idx_to_midi_instrument = []
     for old_track in global_timeline_8:
         this_track_is_drum = old_track[0].is_drum
@@ -225,13 +231,16 @@ def convert_midi_to_song(
                     attack=10, decay=100, sustain=500, release=100, amplitude=1024
                 ),
             )
-            # actually load the drums in
-            # and keep what midi note to what sample index they should go to
-            drums = []
-            used_drum_notes = find_all_drum_chords_used(old_track)
-            for i, drum_note in enumerate(used_drum_notes):
-                drums.append(mapping.drum_instruments[drum_note])
-                midi_drum_to_drum_idx[drum_note] = i
+            # actually load the drums in, using the song-wide drum indices
+            highest_idx = max(
+                midi_drum_to_drum_idx[note]
+                for chord in old_track
+                for note in chord.notes
+            )
+            drums = [
+                mapping.drum_instruments[drum_note]
+                for drum_note in drum_idx_to_midi_drum[: highest_idx + 1]
+            ]
             # Record the MIDI instrument
             # We have the standard kit as -1
             track_idx_to_midi_instrument.append(-1)
@@ -303,10 +312,6 @@ def convert_midi_to_song(
         f"{highest_tick * time_for_tick} seconds"
     )
 
-    if len(midi_drum_to_drum_idx) > 0:
-        drum_idx_to_midi_drum = list(midi_drum_to_drum_idx.keys())
-    else:
-        drum_idx_to_midi_drum = []
     logger.debug(f"Drum indices to MIDI drum notes: {drum_idx_to_midi_drum}")
 
     logger.debug(f"Track indices to MIDI instruments: {track_idx_to_midi_instrument}")

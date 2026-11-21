@@ -13,6 +13,7 @@ uv sync                                   # create venv + install deps (incl. de
 uv run midi2mkcd convert song.mid                      # print the hex literal to stdout (bundled params)
 uv run midi2mkcd convert song.mid -p my.yaml -o out.ts # custom params; write (overwrites)
 uv run midi2mkcd convert song.mid -f code              # -f {hex,code,code_extra}; code_extra = Song-Visualizer consts
+uv run midi2mkcd recover-midi song.ts -o song.mid      # Arcade song text -> MIDI (lossy; -o required)
 uv run midi2mkcd tune report song.mid                  # instruments/drums used (GM names), ranges, params coverage
 uv run midi2mkcd tune replace song.mid --melodics 48   # every melodic note as program 48 (and/or --drums N)
 uv run midi2mkcd tune sample song.mid --melodics 40-47 # one program playing the song once per instrument
@@ -34,7 +35,7 @@ GitHub Actions (`.github/workflows/`) runs on pushes to `main` and on every PR: 
 
 ## Architecture
 
-The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/path + params YAML text or mapping → `ConversionResult`) is the public entry point, re-exported from the package root; `tuning.py` holds the instrument-tuning tools (replace, sample, report, check_params) and is not re-exported; `render.py` builds all TypeScript and report text; `errors.py` has the `Midi2MkcdError` hierarchy. `cli.py` only parses arguments (subcommands `convert`, `tune {replace,sample,report}`, `params {show,check}`), reads files, configures logging and calls one library function per command; `__main__.py` and the `midi2mkcd` script both run `cli.main`. `utils/gm_names.py` has the General MIDI instrument and drum note names.
+The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/path + params YAML text or mapping → `ConversionResult`) is the public entry point, re-exported from the package root; `tuning.py` holds the instrument-tuning tools (replace, sample, report, check_params) and is not re-exported; `song_to_midi/__init__.py::song_to_midi` (song text → MIDI bytes, the reverse of `midi_to_song`, not re-exported) reads its input with `utils/song_text.py::parse_song_text` (the single ``hex`...` `` literal plus `code_extra` consts); `render.py` builds all TypeScript and report text; `errors.py` has the `Midi2MkcdError` hierarchy. `cli.py` only parses arguments (subcommands `convert`, `recover-midi`, `tune {replace,sample,report}`, `params {show,check}`; binary outputs require `-o` and go through `_emit_bytes`, never stdout), reads files, configures logging and calls one library function per command; `__main__.py` and the `midi2mkcd` script both run `cli.main`. `utils/gm_names.py` has the General MIDI instrument and drum note names.
 
 **`midi_to_song/__init__.py::convert_midi_to_song`** is the core pipeline. It runs a chain of `timeline_*` stages, each producing a new list of typed dataclasses from `midi_to_song/models.py` (the variables are named `global_timeline_0..8`):
 
@@ -46,11 +47,11 @@ The package is a library with a thin CLI. `api.py::convert` (MIDI bytes/stream/p
 
 The song is fixed at 120 BPM, 4 beats/measure, 24 ticks/beat (1 tick = 1/48 s). All MIDI timing is converted to absolute seconds and then quantized to this grid; MIDI tempo is not carried into the song header.
 
-**`arcade/`** is a Python port of pxt's `pxtlib/music.ts` (encode/decode) and `localtypings/pxtmusic.d.ts` (types). The byte layout is documented in a comment at the top of `music_types.py`. Keep this code faithful to upstream pxt. Per-chord velocity is encoded as an extra trailing section, which only Arcade beta reads right now.
+**`arcade/`** is a Python port of pxt's `pxtlib/music.ts` (encode/decode) and `localtypings/pxtmusic.d.ts` (types). The byte layout is documented in a comment at the top of `music_types.py`. Keep this code faithful to upstream pxt. Per-chord velocity is encoded as an extra trailing section, which stable Arcade now reads (older versions ignore it).
 
 Format limits that drive most of the pipeline's complexity: each note is stored as 6 bits relative to the track's octave (a 64-note range), track/note-byte lengths are 16-bit, and polyphony is per-chord with no overlap within a track. Breaking any of these splits tracks rather than dropping notes.
 
 ## Conventions
 
 - mypy runs in `strict` mode (`mido` is untyped and ignored). Ruff targets py314. Note that Python 3.14 syntax such as unparenthesized `except A, B:` is used.
-- Library modules only do `logger = logging.getLogger(__name__)`; the package root adds a `NullHandler`. Only the CLI configures logging (`cli.configure_logging`: one stderr handler on the `midi2mkcd` logger), so stdout carries only generated code. `--debug` sets the level to DEBUG.
+- Library modules only do `logger = logging.getLogger(__name__)`; the package root adds a `NullHandler`. Only the CLI configures logging (`cli.configure_logging`: one stderr handler on the `midi2mkcd` logger), so stdout carries only generated code. The default level is INFO; `-v`/`--verbose` sets it to DEBUG.

@@ -24,7 +24,8 @@ from midi2mkcd.api import (
     default_instrument_params_text,
     load_instrument_params,
 )
-from midi2mkcd.errors import Midi2MkcdError
+from midi2mkcd.errors import InvalidSongError, Midi2MkcdError
+from midi2mkcd.song_to_midi import song_to_midi
 from midi2mkcd.utils.strings import parse_range
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,22 @@ def build_parser() -> ArgumentParser:
     _add_format(p, "hex")
     _add_params(p)
     _add_output(p, copy=True)
+
+    p = _leaf(commands, "recover-midi", _run_recover_midi,
+              "Recover a MIDI file from a converted song (lossy).",
+              "Turn a converted song back into a MIDI file, for when the original\n"
+              "is lost. Lossy: timing is quantized, note lengths include the gate\n"
+              "fix, and velocities are approximate.\n\n"
+              "INPUT is convert's output in any format. A code_extra file gives the\n"
+              "exact programs, drum notes and lyrics; otherwise programs and drums\n"
+              "are found by matching each track's instrument against PARAMS, and\n"
+              "lyrics are lost.")  # fmt: skip
+    _add_input(p, "Text file with one hex`...` song (convert's output).")
+    p.add_argument("-p", "--params", type=Path, metavar="PARAMS",
+                   help="The instrument parameter YAML the song was converted with, "
+                   "to match instruments and undo pitch compensation. Default: the "
+                   "bundled parameters.")  # fmt: skip
+    _add_binary_output(p, "MIDI file to write")
 
     tune = _group(commands, "tune", "Tools for auditioning instrument parameters "
                   "against a song.")  # fmt: skip
@@ -223,6 +240,13 @@ def _add_output(p: ArgumentParser, *, copy: bool) -> None:
     _add_verbose(p)
 
 
+def _add_binary_output(p: ArgumentParser, what: str) -> None:
+    p.add_argument("-o", "--output", type=Path, metavar="OUT", required=True,
+                   help=f"{what} (overwritten if it exists). Required: binary "
+                   "output never goes to stdout.")  # fmt: skip
+    _add_verbose(p)
+
+
 def _add_verbose(p: ArgumentParser) -> None:
     p.add_argument("-v", "--verbose", action="store_true",
                    help="Show debug logging on stderr, and tracebacks for "
@@ -241,6 +265,12 @@ def _add_tune_common(p: ArgumentParser) -> None:
 def _run_convert(args: Namespace) -> int:
     result = convert(args.input, _read_params(args.params))
     return _emit(result.to_typescript(args.format), args.output, args.copy)
+
+
+def _run_recover_midi(args: Namespace) -> int:
+    logger.info(f"Reading song from {args.input}")
+    data = song_to_midi(_read_song_text(args.input), _read_params(args.params))
+    return _emit_bytes(data, args.output)
 
 
 def _run_tune_replace(args: Namespace) -> int:
@@ -298,6 +328,21 @@ def _read_params(path: Path | None, *, allow_incomplete: bool = False) -> Params
     if allow_incomplete:
         return load_instrument_params(text, allow_incomplete=True)
     return text
+
+
+def _read_song_text(path: Path) -> str:
+    """Read a song file as UTF-8 text."""
+    try:
+        return path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        raise InvalidSongError(f"{path} is not a UTF-8 text file: {e}") from e
+
+
+def _emit_bytes(data: bytes, output: Path) -> int:
+    """Write binary output to a file (never stdout)."""
+    output.write_bytes(data)
+    logger.info(f"Wrote {output}")
+    return 0
 
 
 def _emit(text: str, output: Path | None, copy: bool) -> int:

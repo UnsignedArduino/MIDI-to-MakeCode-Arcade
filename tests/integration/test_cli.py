@@ -7,6 +7,7 @@ from helpers import FIXTURE_MIDI, GOLDEN
 
 from midi2mkcd import __version__, default_instrument_params_text, render, tuning
 from midi2mkcd.cli import main
+from midi2mkcd.song_to_midi import song_to_midi
 
 INPUT = str(FIXTURE_MIDI)
 
@@ -140,6 +141,7 @@ def test_verbose_reraises_errors(tmp_path: Path) -> None:
         ["params", "-h"],
         ["params", "show", "-h"],
         ["params", "check", "-h"],
+        ["recover-midi", "-h"],
     ],
     ids=" ".join,
 )
@@ -166,6 +168,7 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["tune", "sample", INPUT, "--melodics", "x"],
         ["params", "check", "-o", "x"],
         ["convert", INPUT, "-f", "wav"],
+        ["recover-midi", INPUT],
     ],
     ids=lambda argv: " ".join(Path(a).name for a in argv) or "bare",
 )
@@ -179,3 +182,33 @@ def test_usage_errors_exit_two(
 def test_replace_error_names_the_options(capsys: pytest.CaptureFixture[str]) -> None:
     assert run(["tune", "replace", INPUT]) == 2
     assert "give --melodics, --drums or both" in capsys.readouterr().err
+
+
+def test_recover_midi_writes_a_midi_file(tmp_path: Path) -> None:
+    song = tmp_path / "song.ts"
+    assert run(["convert", INPUT, "-f", "code_extra", "-o", str(song)]) == 0
+    out = tmp_path / "recovered.mid"
+    assert run(["recover-midi", str(song), "-o", str(out)]) == 0
+    assert out.read_bytes() == song_to_midi(song.read_text(encoding="utf-8"))
+    assert out.read_bytes().startswith(b"MThd")
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (b"// no song", "found none"),
+        (b"hex`00` hex`01`", "found 2"),
+        (b"\xff\xfe\x00garbage", "not a UTF-8 text file"),
+    ],
+    ids=["no literal", "two literals", "binary"],
+)
+def test_recover_midi_bad_input_is_a_clean_error(
+    content: bytes, message: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    song = tmp_path / "song.ts"
+    song.write_bytes(content)
+    assert run(["recover-midi", str(song), "-o", str(tmp_path / "out.mid")]) == 1
+    err = capsys.readouterr().err
+    assert message in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "out.mid").exists()

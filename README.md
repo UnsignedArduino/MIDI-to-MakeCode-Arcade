@@ -20,6 +20,8 @@ CLI app). `uv run python -m midi2mkcd` works too. Every command is a
 subcommand:
 
 * `convert`: convert a MIDI file to Arcade code.
+* `recover-midi`: turn converted Arcade code back into a MIDI file (lossy; see
+  [Recovering a lost MIDI file](#recovering-a-lost-midi-file)).
 * `tune replace`, `tune sample`, `tune report`: tools for writing and tuning
   instrument parameter files (see
   [Defining your own instrument parameter file](#defining-your-own-instrument-parameter-file)).
@@ -81,14 +83,32 @@ uv run midi2mkcd convert "Never Gonna Give You Up.mid" -f code_extra
 
 `-f code_extra` writes out extra information that the visualizer above can use
 to make the visuals more accurate.
-[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example (once
-again, at the time of writing, per-chord velocity is in beta, so import into
-the beta editor if desired). In the visualizer, you can press B to switch
+[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example. In
+the visualizer, you can press B to switch
 through the main interface, the track viewer (use arrow keys to highlight a
 track if desired), and the lyric viewer. Any lyrics (lyric meta message only so
 far) in the MIDI file will also be exported.
 
 Add `-v` to any command for debug logging (and full tracebacks for errors).
+
+### Recovering a lost MIDI file
+
+If you only have the converted code, `recover-midi` turns it back into a MIDI
+file (`-o` is required):
+
+```commandline
+uv run midi2mkcd recover-midi "Never Gonna Give You Up.ts" -o "recovered.mid"
+```
+
+The input is a text file holding exactly one `` hex`...` `` song, i.e. the
+output of `convert` in any format (not `tune sample`, which holds several).
+It is lossy: timing is quantized to the song's ticks (written at 120 BPM),
+note lengths include the converter's gate fix, and velocities are approximate.
+A `-f code_extra` file gives the exact instruments, drum notes and lyrics.
+From plain hex, instruments and drums are found by matching each track
+against the instrument parameter file (pass the one you converted with as
+`-p`), and lyrics are lost. More than 15 instruments spill onto a second MIDI
+port.
 
 ### Simulator crash risk (WebAudio memory leak)
 
@@ -125,8 +145,7 @@ Features:
 * MIDI ports and channels
 * Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
   track to a drum track and back (will only use the standard drum kit notes)
-* Per note velocity (MakeCode Arcade will ignore this for now, but it is song's
-  output - MakeCode Arcade beta at the time of writing supports it)
+* Per note velocity (stored per chord in the song)
 * Lyric meta messages
 
 ### Defining your own instrument parameter file
@@ -239,14 +258,17 @@ for warning in result.warnings:  # e.g. the simulator crash-risk warning
 Errors from bad input are subclasses of `midi2mkcd.Midi2MkcdError`:
 `InvalidMidiError` (the MIDI could not be parsed), `InstrumentParamsError` (bad
 YAML, invalid entries, or an instrument the song uses has no entry) and
-`SongConstraintError` (the song can't fit Arcade's song format). The library
+`SongConstraintError` (the song can't fit Arcade's song format) and
+`InvalidSongError` (Arcade song text that can't be read back). The library
 only logs through the standard `logging` module (the `midi2mkcd` logger) and
-never prints. The tuning tools are in `midi2mkcd.tuning`.
+never prints. The tuning tools are in `midi2mkcd.tuning`, and
+`midi2mkcd.song_to_midi.song_to_midi(text, params=None)` returns recovered
+MIDI file bytes.
 
 ### Help text
 
 ```commandline
-usage: midi2mkcd [-h] [--version] {convert,tune,params} ...
+usage: midi2mkcd [-h] [--version] {convert,recover-midi,tune,params} ...
 
 Convert a MIDI file to a MakeCode Arcade song.
 
@@ -255,8 +277,9 @@ options:
   --version             show program's version number and exit
 
 commands:
-  {convert,tune,params}
+  {convert,recover-midi,tune,params}
     convert             Convert a MIDI file to Arcade code.
+    recover-midi        Recover a MIDI file from a converted song (lossy).
     tune                Tools for auditioning instrument parameters against a
                         song.
     params              Print or check instrument parameter files.
@@ -289,6 +312,32 @@ options:
                         'optional' extra: pip install "midi2mkcd[optional]").
   -v, --verbose         Show debug logging on stderr, and tracebacks for
                         errors.
+```
+
+```commandline
+usage: midi2mkcd recover-midi [-h] [-p PARAMS] -o OUT [-v] INPUT
+
+Turn a converted song back into a MIDI file, for when the original
+is lost. Lossy: timing is quantized, note lengths include the gate
+fix, and velocities are approximate.
+
+INPUT is convert's output in any format. A code_extra file gives the
+exact programs, drum notes and lyrics; otherwise programs and drums
+are found by matching each track's instrument against PARAMS, and
+lyrics are lost.
+
+positional arguments:
+  INPUT                Text file with one hex`...` song (convert's output).
+
+options:
+  -h, --help           show this help message and exit
+  -p, --params PARAMS  The instrument parameter YAML the song was converted
+                       with, to match instruments and undo pitch compensation.
+                       Default: the bundled parameters.
+  -o, --output OUT     MIDI file to write (overwritten if it exists).
+                       Required: binary output never goes to stdout.
+  -v, --verbose        Show debug logging on stderr, and tracebacks for
+                       errors.
 ```
 
 ```commandline
