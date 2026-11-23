@@ -31,7 +31,7 @@ conversion algorithm or the existing golden outputs.
 | `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
 | Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
-| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with `synthesize` (numpy, `audio` extra). |
+| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with the numpy `audio` extra (open question 6), then `synthesize`. Read section 2 "Stage 2" (incl. the stop-at-end and rest notes) and section 4. The calibration recordings must be redone (section 4, Validation 2). |
 | `params soundfont` (section 5)  | Not started | |
 | `params fit` (section 6)        | Not started | |
 | Two-layer instruments           | Deferred (last) | |
@@ -386,6 +386,24 @@ Per instruction:
   immediately, and reused. When the waveform changes (only drums do this),
   the previous waveform's gain fades with `setTargetAtTime(0, t, 0.015)`.
   At the end, the source's gain fades with `setTargetAtTime(0, end, 0.015)`.
+  **But the note is stopped at its end** (checked in the source,
+  `playInstructions.ts` lines 177–280): `playInstructionsAsync` awaits
+  `U.delay(totalDuration * 1000)` (the sum of all instruction durations,
+  rests included) and then `stop()`s and disconnects every generator. So
+  that last 15 ms fade barely runs (only for the timer's lateness, a few
+  ms). Since every buffer ends with a 10 ms ramp to 0 when the amp is open
+  (`renderInstrument`'s roll-off, `renderDrumInstrument`'s final step), the
+  rule for `synthesize` is: **output stops at the end of the instructions**.
+  The fade of a *previous* waveform at a waveform change does run (it happens
+  mid-note).
+- **Waveform-0 rests** (`wave === 0`) only advance `currentTime`. They don't
+  touch any gain, so the current waveform keeps its last level through the
+  rest. pxt's buffers only contain zero-duration rests (the unused slots at
+  the end, a drum step of duration 0), so this rarely matters; don't add a
+  fade there.
+- Each instruction's duration is an integer number of ms (`/ 1000` s), and
+  all automation is scheduled at absolute context times (`currentTime +=
+  duration`).
 - Generators:
   - **triangle 1, sawtooth 2, sine 3**: native `OscillatorNode` (band-limited),
     `frequency.setValueAtTime(start, t)` +
@@ -621,7 +639,8 @@ handle escapes and non-ASCII).
 ## 4. Synthesizer (`audio.py`) and `render` / `tune ... --wav`
 
 ```
-midi2mkcd render INPUT [-p PARAMS] -o OUT.wav [--rate 48000] [--no-velocity] [-v]
+midi2mkcd render INPUT [-p PARAMS] -o OUT.wav [--rate 48000] [--volume 128] [--no-velocity] [-v]
+    # --volume: music.volume(), 0-255, default 128 (song_events' global_volume)
     # INPUT: a .mid file (converted first, with -p), or a .ts/.txt file with exactly one hex`...`
 midi2mkcd tune replace INPUT.mid ... [--wav OUT.wav]
 midi2mkcd tune sample  INPUT.mid ... [--wav OUT.wav]
@@ -692,10 +711,20 @@ the names above as thin wrappers over them, and must import numpy lazily
 
 Stage 2 implementation notes:
 
-- Per instruction: build per-sample frequency and gain as linear ramps over
-  `round(duration_ms * rate / 1000)` samples; phase = running `cumsum(freq /
-  rate)` (cycles), carried across instructions of the same waveform within a
-  note (one generator per waveform per note, as in the simulator).
+- Per instruction: build per-sample frequency and gain as linear ramps;
+  phase = running `cumsum(freq / rate)` (cycles), carried across instructions
+  of the same waveform within a note (one generator per waveform per note, as
+  in the simulator). **Place instructions at absolute sample positions**:
+  keep a running total of ms from the note's start (and the note's start ms
+  from `song_events`) and convert each boundary with `round(total_ms * rate
+  / 1000)`, as Web Audio schedules at absolute times. Don't round each
+  instruction's length separately: at 44.1 kHz (44.1 samples per ms) that
+  drifts.
+- Mix each note into one preallocated output buffer as it is synthesized
+  (the length is known up front: the latest note start + its instructions'
+  total duration). Don't keep per-note arrays: a 3-minute song is ~35 MB of
+  float32 at 48 kHz, plus ~17 MB of 16-bit WAV bytes. (`song_events` itself
+  is small: ~230 bytes per sound, ~3 MB for a 14k-event song, measured.)
 - Triangle/saw/sine: Web Audio oscillators are band-limited. Pure sine is
   exact; for triangle and saw use band-limited synthesis (additive up to
   Nyquist, or PolyBLEP) to match the simulator's smoothness. Squares and the
@@ -717,7 +746,13 @@ Stage 2 implementation notes:
   (peak ≈ 1.18) fits in ±1: measured 1.5 dB below an ideal ±1 saw
   (20·log₁₀ 1.18 = 1.4). Scale the band-limited saw the same way. Triangle
   has no overshoot and measured exactly as modelled.
-- Render until every note's tail has finished (`stop(true)` keeps them).
+- Render until every note's instructions have finished (`stop(true)` keeps
+  sounding notes, so the song's last tick doesn't cut them), and stop each
+  note at the end of its own instructions (see "But the note is stopped at
+  its end" in section 2, Stage 2).
+- Triangle and sawtooth: additive synthesis up to Nyquist is enough (the
+  measured levels match ideal band-limited waves; Chrome's exact wavetable
+  partial counts per octave don't need copying).
 - Velocity is honoured by default, since stable Arcade reads the velocity
   section. `--no-velocity` (`use_velocity=False`) treats every event as
   velocity 128, to hear the song as older Arcade versions (which ignore the
@@ -896,6 +931,20 @@ Stage 2 implementation notes:
    - **Drums** last their step total: median 0 ms, 80% within ±12 ms.
    - Ticks: 20 ms, drift 3 ms per 1000 ticks; the first note was ~55 ms
      late this time (so 55–230 ms, varies).
+   **What is on disk now (checked 2026-11-23):** `testing/calibration/` holds
+   only the generators (`make_calibration.py`, `make_chain_test.py`), the
+   song files (`calibration.ts`, `calibration.mid`,
+   `calibration_params.yaml`, `manifest.json`), `chain_test.wav` and
+   `chain_test.txt`. **None of the three simulator recordings was kept, and
+   the comparison script was never written.** The numbers above are enough
+   for the CI sanity checks (item 3), but the perceptual comparison needs
+   either a recording from the user or a new one: re-run the chain test
+   first with the clean setup (Windows audio enhancements and Dolby Atmos for
+   Headphones off; "recorded − file" constant within ~0.5 dB), then record
+   the calibration song, keep it as `testing/calibration/recording_4.wav`
+   (48 kHz), and write the comparison script (onset alignment from the
+   marker beats and `manifest.json`, then per-section RMS envelope and
+   spectrum against `render`'s output) under `testing/calibration/`.
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
@@ -1175,7 +1224,11 @@ working).
 6. **Dependency wheels for Python 3.14** (numpy, scipy, cma, any SF2 test
    reader). numpy and scipy are expected to have cp314 wheels and cma is
    pure Python; confirm with `uv add` when each is added. (The Pyodide half
-   of this question is moot while the web page is out of scope.)
+   of this question is moot while the web page is out of scope.) **Still
+   open; the first Stage 2 step** is adding numpy as the `audio` extra
+   (`[project.optional-dependencies]`), and to the dev group so tests and
+   mypy see it, then checking that `uv sync` gets a cp314 wheel. Stage 2
+   tests that need numpy should `pytest.importorskip("numpy")`.
 7. ~~**`render`'s default sample rate.**~~ Answered: the user's simulator
    runs at **48000 Hz**, so `render --rate` defaults to 48000 (the
    recording above was also 48 kHz). Others can check theirs with
