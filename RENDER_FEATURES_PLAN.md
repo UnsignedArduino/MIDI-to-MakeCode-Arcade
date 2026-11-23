@@ -31,7 +31,7 @@ conversion algorithm or the existing golden outputs.
 | `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
 | Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
-| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with the numpy `audio` extra (open question 6), then `synthesize`. Read section 2 "Stage 2" (incl. the stop-at-end and rest notes) and section 4. The clean reference recording is `testing/calibration/calibration_recording_3_clean.mkv`; the comparison script is still to write (section 4, Validation 2). |
+| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with the numpy `audio` extra (open question 6), then `synthesize`. Read section 2 "Stage 2" (incl. the stop-at-end and rest notes) and section 4. The clean reference recording is `testing/calibration/calibration_recording_3_clean.mkv`; the measurement scripts are in `testing/calibration/analysis/`; only the render-vs-recording comparison is still to write (section 4, Validation 2). |
 | `params soundfont` (section 5)  | Not started | |
 | `params fit` (section 6)        | Not started | |
 | Two-layer instruments           | Deferred (last) | |
@@ -951,10 +951,35 @@ Stage 2 implementation notes:
    23-05-25 and 23-15-33 (103.3 s) calibration recordings 1 and 2 (levels
    unusable), 23-34-09 (30.0 s) the compressed chain test, 23-43-09 (24.7 s)
    the clean chain test, 23-50-41 recording 3 (the one copied here).
-   **Not written yet:** the comparison script. Put it under
-   `testing/calibration/`: align onsets from the marker beats and
-   `manifest.json`, then compare each section's RMS envelope and spectrum
-   with `render`'s output of `calibration.ts`.
+   **Analysis scripts (recovered 2026-11-23)** from the "RENDER_FEATURES_PLAN
+   review" session's scratchpad, now in `testing/calibration/analysis/`
+   (gitignored) with relative paths. They measured every number above, and
+   re-running them on the copies reproduces those numbers exactly. Run from
+   the repo root with `uv run --with numpy --with scipy python
+   testing/calibration/analysis/<script>.py` (`plot_levels.py` also needs
+   `--with matplotlib`):
+   - `common.py`: loads `REC` (default
+     `calibration_recording_3_clean.wav`, the mkv's audio, sample-identical
+     to a fresh ffmpeg extraction) and `manifest.json`; `START` = first onset
+     − `LATE` (default 0.058 s for recording 3); helpers `env_db`,
+     `onset_after`, `rms_db`, `t_of(tick)` (20 ms per tick).
+   - `align.py`: onset offsets and drift against 20 ms per tick.
+   - `levels.py`: each waveform's level against the reference sine and
+     velocity linearity, against a model of the exact pxtsim buffers (it
+     already has numpy versions of the xorshift noise, tunable-noise, cycle
+     and square buffers with linear interpolation, and additive band-limited
+     triangle/saw: a head start for `synthesize`).
+   - `plot_levels.py`: plot of the levels section (`OUT` = output png).
+   - `poly.py`: chord notes sounding and chord loudness.
+   - `env.py`: LFOs, pitch envelope, attack 0, release 0, the short gate.
+   - `check_chain.py [REC.wav]`: the chain test; default
+     `chain_test_recording_clean.wav` (the clean chain-test recording's
+     audio, also copied in).
+   **Still to write:** the render-vs-recording comparison. Reuse
+   `common.py`'s alignment: render `calibration.ts` with `render` (start =
+   tick 0, no latency), put it through the same per-section measurements as
+   the recording (minus the +3.01 dB), and report the differences per
+   section.
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
