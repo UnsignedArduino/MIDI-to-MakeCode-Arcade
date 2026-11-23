@@ -29,7 +29,8 @@ conversion algorithm or the existing golden outputs.
 | Feature                         | Status | Notes |
 | ------------------------------- | ------ | ----- |
 | `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
-| Synthesizer Stage 1 (section 4) | **Next** | `note_instructions` / `drum_instructions` / `song_events` + Node golden script under `tools/`. |
+| Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
+| Synthesizer Stage 1 `audio.py` wrappers | **Next** | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. |
 | Synthesizer Stage 2, `render`, `tune ... --wav` | Not started | |
 | `params soundfont` (section 5)  | Not started | |
 | `params fit` (section 6)        | Not started | |
@@ -71,6 +72,10 @@ src/midi2mkcd/
     music.py         # encode/decode of the song buffer (port of pxt pxtlib/music.ts)
     music_types.py   # Song, Track, Instrument, Envelope, LFO, NoteEvent, Note, DrumInstrument,
                      #   DrumSoundStep; byte layout documented at the top
+    sim_song.py      # port of pxtsim/sound/song.ts: render_instrument, render_drum_instrument
+                     #   (Stage 1, added 2026-11-23)
+    sim_sequencer.py # port of pxtsim/sound/sequencer.ts: FREQUENCIES, tick_to_ms,
+                     #   metronome_interval_ms, volume formulas, sequence_song (Stage 0/1)
   utils/strings.py (parse_range, format_ranges), format.py, resources.py, gm_names.py,
         song_text.py (parse_song_text, added by recover-midi)
 ```
@@ -335,7 +340,12 @@ its duration (it advances time and keeps going), not a terminator
 - `envelopeValueAtTime(env, t, gate)`: after the gate, a **linear** ramp from
   the value at the gate to 0 over `release` ms; before that, linear attack
   0 → amplitude, linear decay amplitude → `sustain / 1024 * amplitude`, then
-  hold.
+  hold. **Gates shorter than the attack (settled by the port):** the time
+  points don't include the gate there, only the end of the attack and gate +
+  release. So the instructions ramp from 0 up to the release curve's value at
+  the end of the attack (11/1024 of full for attack 200, gate 21, release
+  200), then down to 0 at gate + release. That is the quiet "rises for the
+  whole attack, gone by ~220 ms" shape calibration recording 3 measured.
 - `lfoValueAtTime(lfo, t) = cos(2π · lfo.frequency · t / 1000) · lfo.amplitude`
   (a cosine sampled at the LFO points, so effectively a triangle-ish ramp
   chain at ≥ 50 ms resolution).
@@ -632,6 +642,38 @@ Stage 1 (`note_instructions`, `drum_instructions`, `song_events`) is pure
 Python with no numpy, so it can be tested and reused without the extra. It
 returns the **same bytes** as `song.ts`. Stage 2 (`synthesize`) needs numpy.
 
+### Stage 1 status (2026-11-23)
+
+The line-by-line pxt ports are done and live in `arcade/`, next to the other
+pxt ports (`music.py`, `music_types.py`), not in `audio.py`. `audio.py` keeps
+the names above as thin wrappers over them, and must import numpy lazily
+(inside `synthesize` and below) so Stage 1 works without the `audio` extra.
+
+- `arcade/sim_song.py`: `render_instrument(instrument, note_frequency,
+  gate_length, volume)` and `render_drum_instrument(drum, volume)`, with
+  private helpers that copy JS number semantics (`_js_to_int32` for `| 0`,
+  NaN-propagating `Math.max`/`Math.min`, division by zero). The returned
+  buffers keep `song.ts`'s unused zero-filled slots at the end. A drum with no
+  steps raises `ValueError` (it throws in `song.ts`).
+- `arcade/sim_sequencer.py`: `FREQUENCIES`, `note_frequency` (NaN past the
+  table, including negative indices), `tick_to_ms`, `metronome_interval_ms`
+  (the truncated `setInterval` delay, 20 ms for converted songs),
+  `melodic_track_volume` / `drum_track_volume`, `max_tick`, and
+  `sequence_song(song, global_volume=128) -> list[SequencedSound(tick,
+  track_index, instructions)]`.
+- `onTick` behaviour that `sequence_song` reproduces, found while porting:
+  the per-track scan **stops at the first event starting after the current
+  tick**, so an event listed after a later-starting one never plays (encoded
+  songs are sorted, so only hand-made buffers hit this); tick 0 plays even
+  with 0 measures; an empty drums list still makes a drum track (an empty JS
+  array is truthy); a drum index past the list, or a drum with no steps,
+  throws inside the async play call and is silent (skipped, DEBUG log).
+- `Sequencer.globalVolume` starts at 1024, but games set it to
+  `music.volume()` (default 128), hence `sequence_song`'s default.
+- `song_events` is then `[(s.tick * metronome_interval_ms(song),
+  s.instructions) for s in sequence_song(...)]`, with `use_velocity=False`
+  clearing every event's velocity first.
+
 Stage 2 implementation notes:
 
 - Per instruction: build per-sample frequency and gain as linear ramps over
@@ -695,14 +737,34 @@ Stage 2 implementation notes:
 
 ### Validation (the real cost)
 
-1. **Stage 1, exact.** Write a small Node script under `tools/` (not run in
-   CI) that loads the real `pxtsim/sound/song.ts` (strip types with esbuild or
-   `tsc`, or copy the two functions with types removed) and dumps instruction
-   bytes for a table of cases: every waveform, attack/decay/release edge
-   cases including 0, gates shorter than attack, pitch envelope on/off, each
-   LFO on/off and at frequencies giving the 50 ms floor, every drum in the
-   bundled params, a few volumes. Commit the output as a golden file and test
-   `audio.note_instructions`/`drum_instructions` against it byte for byte.
+1. **Stage 1, exact. Done (2026-11-23).** It lives next to `make_fixture.py`
+   in `tests/fixtures/`, not under `tools/`:
+   - `make_sim_cases.py` (Python) writes `sim_cases.json`: 591 note cases
+     (every bundled instrument at 4 note/gate/volume combinations, every
+     waveform, envelope edge cases including 0 and 65535, gates of 0, one
+     tick, 21 ms and negative, pitch envelopes, each LFO at frequencies 0–255,
+     an undefined frequency, fractional volumes), 188 drum cases (every
+     bundled drum at 3 volumes plus edge cases), and 5 song cases (the
+     converted fixture at volumes 128/255/2000, an edge-case song, a
+     0-measure song). Inputs use pxt's camelCase JSON shapes; songs are
+     encoded hex.
+   - `make_sim_goldens.mjs` (Node ≥ 22.13, no npm packages; not run in CI)
+     reads `song.ts` and `sequencer.ts` with `git show <commit>:<path>` from a
+     pxt clone given on the command line, removes the `namespace` wrapper
+     and `export`s (Node's type stripping can't do namespaces; it fails if
+     the source doesn't look as expected), strips types, and runs them. Songs
+     are decoded with pxt's own `decodeSong` and played by the real
+     `Sequencer` (dummy metronome, stubbed `playInstructionsAsync`). Writes
+     `golden/sim_instructions.json` (the commit, the frequency table, every
+     output as hex, and each song's silent failures).
+   - `tests/unit/test_sim_goldens.py` checks the ports against it: all 784
+     cases match byte for byte (Python's `math.cos` and V8's agree on every
+     LFO case). A 0.1% envelope perturbation fails 131 of them.
+   - The pxt clone used: `C:\Users\ckyiu\Documents\Projects\pxt` (blobless).
+     To re-port from a newer pxt, update `PXT_COMMIT` in the script, the test
+     and the ports' header comments, then regenerate.
+   - The `audio.py` wrappers, once written, only need small tests of their
+     own (`song_events` timing and `use_velocity`).
 2. **Stage 2, perceptual.** Build a few test songs (one per waveform at low,
    middle and high notes; envelope and LFO cases; each drum type), record them
    from the simulator by hand into `testing/` (gitignored), and compare
@@ -750,7 +812,8 @@ Stage 2 implementation notes:
    - **1-tick gate shorter than a 200 ms attack:** sounds for ~330 ms and
      peaks ~150 ms in, where the model predicts a peak at the gate (~21 ms)
      and silence by ~290 ms. Inconclusive because of the gain riding; the
-     Stage 1 goldens from the real `song.ts` will settle it.
+     Stage 1 goldens from the real `song.ts` will settle it. (Settled: see
+     the short-gate note in section 2, Stage 1.)
    **Second calibration recording (same song, OBS "Application Audio
    Capture" of Chrome):** the same gain riding, nearly to the dB (reference
    sines −4.5/−8.4/−6.4 dB). pxt has no compressor in the song path: the
@@ -808,6 +871,8 @@ Stage 2 implementation notes:
      "after the gate, ramp from the gate's value to 0" reading in Stage 1 is
      wrong for gates shorter than the attack. Port `song.ts` exactly and let
      the Stage 1 goldens include this case. The note is also very quiet.
+     (Done: the port reproduces exactly this shape; see section 2, Stage 1,
+     and the `env_a200_d0_r200_gate21` golden case.)
    - **Attack 0** works (instant start, ends at gate + release). **Release 0**
      ends ~8 ms after the gate (the 10 ms ramp to 0).
    - **LFOs and pitch envelope** as in recording 1 (4.00 Hz amp LFO; no
