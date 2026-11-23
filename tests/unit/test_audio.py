@@ -3,6 +3,7 @@ against real pxt output in test_sim_goldens.py)."""
 
 import logging
 import math
+import struct
 
 import pytest
 
@@ -19,7 +20,13 @@ from midi2mkcd.arcade.music_types import (
 )
 from midi2mkcd.arcade.sim_sequencer import sequence_song
 from midi2mkcd.arcade.sim_song import render_drum_instrument, render_instrument
-from midi2mkcd.audio import drum_instructions, note_instructions, song_events
+from midi2mkcd.audio import (
+    DEFAULT_GAP_MS,
+    drum_instructions,
+    note_instructions,
+    song_events,
+    songs_events,
+)
 
 INSTRUMENT = Instrument(
     waveform=3,
@@ -89,6 +96,29 @@ def test_song_events_global_volume_and_drums() -> None:
         (0.0, render_instrument(INSTRUMENT, 262, 500, 255)),
         (480.0, render_drum_instrument(DRUM, 255)),
     ]
+
+
+def _duration_ms(instructions: bytes) -> int:
+    return sum(d for (d,) in struct.iter_unpack("<4xH6x", instructions))
+
+
+def test_songs_events_plays_songs_one_after_another() -> None:
+    first = song(Track(0, INSTRUMENT, [NoteEvent(notes(37), 0, 24)]))
+    second = song(Track(1, INSTRUMENT, [NoteEvent(notes(0), 24, 25)], drums=[DRUM]))
+    ((_, note),) = song_events(first)
+    ((drum_start, drum),) = song_events(second)
+    first_end = _duration_ms(note)
+    assert first_end > 0
+
+    events, starts = songs_events([first, song(), second], gap_ms=1000)
+    # The empty song takes no time, but still has a gap on each side
+    assert starts == [0.0, first_end + 1000, first_end + 2000]
+    assert events == [(0.0, note), (first_end + 2000 + drum_start, drum)]
+
+    assert songs_events([]) == ([], [])
+    assert songs_events([first, first])[1] == [0.0, first_end + DEFAULT_GAP_MS]
+    with pytest.raises(ValueError):
+        songs_events([first], gap_ms=-1)
 
 
 def test_song_events_logs_out_of_range_notes(caplog: pytest.LogCaptureFixture) -> None:

@@ -1,6 +1,7 @@
 """Audio rendering: an Arcade song played the way the MakeCode simulator plays it.
 
-Stage 1 (this module so far) turns notes and songs into the simulator's
+Stage 1 (`note_instructions`, `drum_instructions`, `song_events`,
+`songs_events`) turns notes and songs into the simulator's
 12-byte "play instructions", byte-identical to pxt. It is plain Python over
 the line-by-line ports in `arcade/sim_song.py` and `arcade/sim_sequencer.py`,
 and needs no optional dependencies.
@@ -47,6 +48,8 @@ SongEvent = tuple[float, bytes]
 ProgressCallback = Callable[[int, int], None]
 
 DEFAULT_RATE = 48000
+# Silence between songs played one after another (`songs_events`)
+DEFAULT_GAP_MS = 1000.0
 NUMPY_INSTALL_ERROR = 'audio rendering needs numpy: pip install "midi2mkcd[audio]"'
 
 
@@ -110,6 +113,40 @@ def song_events(
         )
     logger.debug("%d sounds, tick interval %d ms", len(events), interval)
     return events
+
+
+def songs_events(
+    songs: Iterable[Song],
+    *,
+    gap_ms: float = DEFAULT_GAP_MS,
+    use_velocity: bool = True,
+    global_volume: float = MUSIC_DEFAULT_VOLUME,
+) -> tuple[list[SongEvent], list[float]]:
+    """`song_events` for several songs played one after another: each song
+    starts `gap_ms` after every sound of the one before has finished.
+
+    :return: The combined events, and each song's start time in ms."""
+    if gap_ms < 0:
+        raise ValueError(f"gap_ms must not be negative, got {gap_ms}")
+    combined: list[SongEvent] = []
+    starts: list[float] = []
+    offset = 0.0
+    for number, song in enumerate(songs):
+        if number:
+            offset += gap_ms
+        events = song_events(
+            song, use_velocity=use_velocity, global_volume=global_volume
+        )
+        starts.append(offset)
+        combined.extend((offset + start, buf) for start, buf in events)
+        offset += max(_event_ends(events), default=0.0)
+    return combined, starts
+
+
+def _event_ends(events: Iterable[SongEvent]) -> list[float]:
+    """When each sound finishes, in ms, as `synthesize` plays it (and sizes its
+    output)."""
+    return [start + _schedule(_parse_instructions(buf))[1] for start, buf in events]
 
 
 def _count_out_of_range_notes(song: Song) -> int:

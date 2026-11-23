@@ -42,6 +42,8 @@ __all__ = [
     "blank_instrument_params_text",
     "check_params",
     "convert_replaced",
+    "drum_samples",
+    "melodic_samples",
     "report",
     "sample_drums",
     "sample_melodics",
@@ -118,14 +120,27 @@ def sample_melodics(
     :param params: See `midi2mkcd.convert`.
     :return: The generated TypeScript.
     """
+    samples = melodic_samples(midi, instruments, params)
+    return render.sampler("melodic instrument sample", "instruments", samples)
+
+
+def melodic_samples(
+    midi: MidiInput, instruments: Iterable[int], params: ParamsInput = None
+) -> list[tuple[int, ConversionResult]]:
+    """
+    The conversions `sample_melodics` plays: the song with every melodic track
+    replaced by each instrument in turn, e.g. to render them with `audio`.
+
+    :param midi: See `midi2mkcd.convert`.
+    :param instruments: The MIDI programs to sample, in play order.
+    :param params: See `midi2mkcd.convert`.
+    :return: (MIDI program, conversion result) pairs, in play order.
+    """
     midi_file = _load_midi(midi)
     mapping = _resolve_params(params)
     instruments = list(instruments)
     logger.info(f"Generating melodic instrument sample of {instruments}")
-    samples = [
-        (n, _convert_replaced(midi_file, mapping, melodics=n)) for n in instruments
-    ]
-    return render.sampler("melodic instrument sample", "instruments", samples)
+    return [(n, _convert_replaced(midi_file, mapping, melodics=n)) for n in instruments]
 
 
 def sample_drums(
@@ -140,12 +155,27 @@ def sample_drums(
     :param params: See `midi2mkcd.convert`.
     :return: The generated TypeScript.
     """
+    samples = drum_samples(midi, notes, params)
+    return render.sampler("drum sample", "drum notes", samples)
+
+
+def drum_samples(
+    midi: MidiInput, notes: Iterable[int], params: ParamsInput = None
+) -> list[tuple[int, ConversionResult]]:
+    """
+    The conversions `sample_drums` plays: the song with every drum note replaced
+    by each note in turn, e.g. to render them with `audio`.
+
+    :param midi: See `midi2mkcd.convert`.
+    :param notes: The MIDI drum notes to sample, in play order.
+    :param params: See `midi2mkcd.convert`.
+    :return: (MIDI drum note, conversion result) pairs, in play order.
+    """
     midi_file = _load_midi(midi)
     mapping = _resolve_params(params)
     notes = list(notes)
     logger.info(f"Generating drum sample of {notes}")
-    samples = [(n, _convert_replaced(midi_file, mapping, drums=n)) for n in notes]
-    return render.sampler("drum sample", "drum notes", samples)
+    return [(n, _convert_replaced(midi_file, mapping, drums=n)) for n in notes]
 
 
 @dataclass(frozen=True)

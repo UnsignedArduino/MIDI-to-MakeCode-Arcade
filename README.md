@@ -12,7 +12,8 @@ Yamaha XG SysEx commands.
 3. Run `uv sync` to create a virtual environment and install all dependencies.
    Use `uv sync --extra optional` if you also want `--copy` (copy the output to
    the clipboard, which needs `pyperclip`), and `uv sync --extra audio` for
-   `render` (which needs `numpy`, and `tqdm` for its progress bar). The dev
+   `render` and `tune ... --wav` (which need `numpy`, and `tqdm` for the
+   progress bar). The dev
    environment `uv sync` makes already has both.
 
 ## Usage
@@ -256,6 +257,16 @@ together. Use commas to separate what you want (e.g. `1,2,4-6` -> [1, 2, 4, 5,
 uv run midi2mkcd tune sample "basic_test.mid" --melodics 3-6 -p "my_params.yaml" --allow-incomplete --copy
 ```
 
+To listen without pasting into Arcade, give either command `--wav OUT.wav`
+instead of `-o`/`--copy`/`-f`: it renders the result the way `render` does
+(see [Listening without Arcade](#listening-without-arcade); needs the `audio`
+extra). `tune sample --wav` plays the songs one after another, 1 s apart, and
+logs when each instrument starts (e.g. `0:04 program 4 (Electric Piano 1)`).
+
+```commandline
+uv run midi2mkcd tune sample "basic_test.mid" --melodics 3-6 -p "my_params.yaml" --allow-incomplete --wav "sample.wav"
+```
+
 #### Defining drum notes
 
 This tool only supports the standard drum kit, so define notes 27 through 87.
@@ -300,7 +311,9 @@ installed). The library only logs through the standard `logging` module (the
 returns recovered MIDI file bytes, and `midi2mkcd.audio` renders audio:
 `render_song(result.song)` gives float32 samples (numpy; pass
 `progress=callback` to get `callback(done, total)` per sound) and
-`to_wav_bytes(samples)` a WAV file.
+`to_wav_bytes(samples)` a WAV file. To render several songs one after
+another, `songs_events(songs)` lays them out 1 s apart for `synthesize`
+(`tuning.melodic_samples` / `drum_samples` give `tune sample`'s songs).
 
 ### Help text
 

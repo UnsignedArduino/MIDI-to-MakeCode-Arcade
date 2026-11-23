@@ -32,8 +32,8 @@ conversion algorithm or the existing golden outputs.
 | Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 2 + `render` (section 4) | **Done** (2026-11-23, branch `render-features`) | numpy `audio` extra, `synthesize` / `render_song` / `to_wav_bytes`, `midi2mkcd render` (tqdm progress bar, speed log line), tests, README/CLAUDE.md. Speeding it up is deferred. Checked against calibration recording 3 with `testing/calibration/analysis/compare.py`: matches to ~0.1 dB. See "Stage 2 status" in section 4. |
-| `tune replace/sample --wav`     | **Next** | Section 4, "CLI behaviour". `render_song` + `to_wav_bytes` already do the work; `tune sample --wav` needs the sampler's `ConversionResult`s (see the bullet there). |
-| `params soundfont` (section 5)  | Not started | |
+| `tune replace/sample --wav`     | **Done** (2026-11-23, branch `render-features`) | `audio.songs_events` (songs 1 s apart, Stage 1), `tuning.melodic_samples` / `drum_samples` (the sampler's `ConversionResult`s), `cli._write_wav` shared with `render`. The `--wav` vs `-o`/`--copy`/`-f` check is in `main` (exit 2), not an argparse group, since `-o` and `--copy` go together. `tune sample --wav` logs e.g. `0:04 program 41 (Viola)`. No `--rate`/`--volume`/`--no-velocity` on `tune`: use `render` on the text output for those. |
+| `params soundfont` (section 5)  | **Next** | |
 | `params fit` (section 6)        | Not started | |
 | Two-layer instruments           | Deferred (last) | |
 
@@ -850,7 +850,9 @@ Built as designed above; don't redo it.
 - `tune replace --wav OUT.wav` renders the replaced song instead of (not as
   well as) the text output. `--wav` is **mutually exclusive** with `-o`,
   `--copy` and `-f` (argparse mutually exclusive group, so it is a usage
-  error, exit 2); test it. Same for `tune sample --wav`. `tune sample --wav` renders the
+  error, exit 2); test it. (As built: a check in `cli.main` calling
+  `parser.error`, since one argparse group would also make `-o` and `--copy`
+  exclusive.) Same for `tune sample --wav`. `tune sample --wav` renders the
   sampler's songs one after another with ~1 s of silence between them and
   logs which instrument starts at which time (e.g. `0:00 program 40`,
   `0:12 program 41`). The sampler renders its `ConversionResult`s directly,

@@ -29,6 +29,7 @@ from midi2mkcd.arcade.music_types import Song
 from midi2mkcd.arcade.sim_sequencer import MUSIC_DEFAULT_VOLUME
 from midi2mkcd.errors import InvalidMidiError, InvalidSongError, Midi2MkcdError
 from midi2mkcd.song_to_midi import song_to_midi
+from midi2mkcd.utils.gm_names import drum_note_name, melodic_instrument_name
 from midi2mkcd.utils.song_text import decode_song_hex, parse_song_text
 from midi2mkcd.utils.strings import parse_range
 
@@ -115,6 +116,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.handler is _run_tune_replace and args.melodics is args.drums is None:
         args.parser.error("give --melodics, --drums or both")
+    if getattr(args, "wav", None) is not None:
+        # Not an argparse mutually exclusive group: -o and --copy go together
+        clashes = [
+            flag
+            for flag, given in (
+                ("-o/--output", args.output is not None),
+                ("--copy", args.copy),
+                ("-f/--format", getattr(args, "format", None) is not None),
+            )
+            if given
+        ]
+        if clashes:
+            args.parser.error(f"--wav can't be used with {', '.join(clashes)}")
     configure_logging(logging.DEBUG if args.verbose else logging.INFO)
     logger.debug(f"Received arguments: {args}")
     try:
@@ -202,20 +216,24 @@ def build_parser() -> ArgumentParser:
                    help="Play every melodic note with MIDI program N.")  # fmt: skip
     p.add_argument("--drums", type=int, metavar="N",
                    help="Play every drum note as MIDI drum note N.")  # fmt: skip
-    _add_format(p, "code")
+    _add_format(p, "code", track_given=True)
+    _add_wav(p, "the replaced song")
     _add_tune_common(p)
 
     p = _leaf(tune, "sample", _run_tune_sample,
               "Play the song once per instrument in a range.",
               "Output one Arcade program that plays INPUT once per instrument in\n"
               "RANGE, each time with every melodic note (or every drum note)\n"
-              "replaced by that instrument.")  # fmt: skip
+              "replaced by that instrument.\n\n"
+              "With --wav, render the songs one after another to a WAV file\n"
+              "instead, 1 s apart, and log when each instrument starts.")  # fmt: skip
     _add_input(p, "MIDI file to tune against.")
     which = p.add_mutually_exclusive_group(required=True)
     which.add_argument("--melodics", type=range_arg, metavar="RANGE",
                        help='MIDI programs to sample, e.g. "0,2,4-10".')  # fmt: skip
     which.add_argument("--drums", type=range_arg, metavar="RANGE",
                        help='MIDI drum notes to sample, e.g. "35-40".')  # fmt: skip
+    _add_wav(p, "the songs, one after another,")
     _add_tune_common(p)
 
     p = _leaf(tune, "report", _run_tune_report,
@@ -271,9 +289,20 @@ def _add_input(p: ArgumentParser, help: str) -> None:
     p.add_argument("input", type=Path, metavar="INPUT", help=help)
 
 
-def _add_format(p: ArgumentParser, default: str) -> None:
-    p.add_argument("-f", "--format", choices=FORMATS, default=default,
+def _add_format(p: ArgumentParser, default: str, *, track_given: bool = False) -> None:
+    """With `track_given`, args.format is None unless -f was given (the handler
+    applies `default`), so it can be checked against other options."""
+    p.add_argument("-f", "--format", choices=FORMATS,
+                   default=None if track_given else default,
                    help=f"{FORMAT_HELP}\nDefault: {default}.")  # fmt: skip
+
+
+def _add_wav(p: ArgumentParser, what: str) -> None:
+    p.add_argument("--wav", type=Path, metavar="OUT.wav",
+                   help=f"Render {what} to this WAV file as the simulator plays "
+                   "it (like 'midi2mkcd render') instead of writing code. Not with "
+                   '-o, --copy or -f. Needs numpy: pip install "midi2mkcd[audio]".'
+                   )  # fmt: skip
 
 
 def _add_params(p: ArgumentParser) -> None:
@@ -326,21 +355,24 @@ def _run_recover_midi(args: Namespace) -> int:
 
 def _run_render(args: Namespace) -> int:
     song = _read_render_input(args.input, args.params)
+    events = audio.song_events(
+        song, use_velocity=not args.no_velocity, global_volume=args.volume
+    )
+    return _write_wav(events, args.output, args.rate)
+
+
+def _write_wav(
+    events: list[audio.SongEvent], output: Path, rate: int = audio.DEFAULT_RATE
+) -> int:
+    """Synthesize the events with a progress bar and a speed log line, and write
+    them as a WAV file."""
     started = time.perf_counter()
     with _ProgressBar("Rendering", "sound") as progress:
-        samples = audio.render_song(
-            song,
-            args.rate,
-            use_velocity=not args.no_velocity,
-            global_volume=args.volume,
-            progress=progress,
-        )
+        samples = audio.synthesize(events, rate, progress=progress)
     logger.info(
-        _render_summary(
-            len(samples) / args.rate, args.rate, time.perf_counter() - started
-        )
+        _render_summary(len(samples) / rate, rate, time.perf_counter() - started)
     )
-    return _emit_bytes(audio.to_wav_bytes(samples, args.rate), args.output)
+    return _emit_bytes(audio.to_wav_bytes(samples, rate), output)
 
 
 def _render_summary(audio_s: float, rate: int, elapsed_s: float) -> str:
@@ -419,16 +451,39 @@ def _run_tune_replace(args: Namespace) -> int:
         melodics=args.melodics,
         drums=args.drums,
     )
-    return _emit(result.to_typescript(args.format), args.output, args.copy)
+    if args.wav is not None:
+        return _write_wav(audio.song_events(result.song), args.wav)
+    return _emit(result.to_typescript(args.format or "code"), args.output, args.copy)
 
 
 def _run_tune_sample(args: Namespace) -> int:
     params = _read_params(args.params, allow_incomplete=args.allow_incomplete)
+    if args.wav is None:
+        if args.melodics is not None:
+            text = tuning.sample_melodics(args.input, args.melodics, params)
+        else:
+            text = tuning.sample_drums(args.input, args.drums, params)
+        return _emit(text, args.output, args.copy)
+
     if args.melodics is not None:
-        text = tuning.sample_melodics(args.input, args.melodics, params)
+        samples = tuning.melodic_samples(args.input, args.melodics, params)
     else:
-        text = tuning.sample_drums(args.input, args.drums, params)
-    return _emit(text, args.output, args.copy)
+        samples = tuning.drum_samples(args.input, args.drums, params)
+    events, starts = audio.songs_events(result.song for _, result in samples)
+    for (number, _), start_ms in zip(samples, starts, strict=True):
+        name = (
+            f"program {number} ({melodic_instrument_name(number)})"
+            if args.melodics is not None
+            else f"drum note {number} ({drum_note_name(number)})"
+        )
+        logger.info(f"{_minutes_seconds(start_ms)} {name}")
+    return _write_wav(events, args.wav)
+
+
+def _minutes_seconds(ms: float) -> str:
+    """E.g. 72500 -> "1:12" (truncated to the second)."""
+    seconds = int(ms // 1000)
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 def _run_tune_report(args: Namespace) -> int:

@@ -15,7 +15,7 @@ from midi2mkcd import (
     render,
     tuning,
 )
-from midi2mkcd.cli import _render_summary, main
+from midi2mkcd.cli import _minutes_seconds, _render_summary, main
 from midi2mkcd.song_to_midi import song_to_midi
 
 INPUT = str(FIXTURE_MIDI)
@@ -182,6 +182,11 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["render", INPUT],
         ["render", INPUT, "-o", "x.wav", "--volume", "256"],
         ["render", INPUT, "-o", "x.wav", "--rate", "0"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-o", "x"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "--copy"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-f", "hex"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--wav", "x.wav", "-o", "x"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--wav", "x.wav", "--copy"],
     ],
     ids=lambda argv: " ".join(Path(a).name for a in argv) or "bare",
 )
@@ -195,6 +200,19 @@ def test_usage_errors_exit_two(
 def test_replace_error_names_the_options(capsys: pytest.CaptureFixture[str]) -> None:
     assert run(["tune", "replace", INPUT]) == 2
     assert "give --melodics, --drums or both" in capsys.readouterr().err
+
+
+def test_wav_error_names_the_clashing_options(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wav = tmp_path / "x.wav"
+    argv = ["tune", "replace", INPUT, "--drums", "36", "--wav", str(wav)]
+    assert run([*argv, "-o", "x", "--copy", "-f", "code"]) == 2
+    assert (
+        "--wav can't be used with -o/--output, --copy, -f/--format"
+        in capsys.readouterr().err
+    )
+    assert not wav.exists()
 
 
 def test_recover_midi_writes_a_midi_file(tmp_path: Path) -> None:
@@ -330,6 +348,61 @@ def test_render_without_tqdm_still_works(
     out = tmp_path / "out.wav"
     assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
     assert out.read_bytes().startswith(b"RIFF")
+
+
+def test_tune_replace_wav_matches_rendering_its_code(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    code = tmp_path / "replace.ts"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "-o", str(code)]) == 0
+    from_code = tmp_path / "code.wav"
+    assert run(["render", str(code), "-o", str(from_code)]) == 0
+    direct = tmp_path / "direct.wav"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "--wav", str(direct)]) == 0
+    assert _wav_frames(direct) == _wav_frames(from_code)
+    assert any(_wav_frames(direct)[2])
+
+
+def test_tune_sample_wav_plays_each_instrument_in_turn(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    singles = []
+    for program in (0, 40):
+        out = tmp_path / f"{program}.wav"
+        argv = ["tune", "replace", INPUT, "--melodics", str(program), "--wav", str(out)]
+        assert run(argv) == 0
+        singles.append(_wav_frames(out))
+    capsys.readouterr()
+
+    out = tmp_path / "sample.wav"
+    assert run(["tune", "sample", INPUT, "--melodics", "0,40", "--wav", str(out)]) == 0
+    err = capsys.readouterr().err
+    channels, rate, frames = _wav_frames(out)
+    assert (channels, rate) == (1, 48000)
+    # The first song, 1 s of silence, then the second song
+    first, second = singles[0][2], singles[1][2]
+    gap = b"\x00\x00" * rate
+    assert frames == first + gap + second
+
+    seconds = len(first) // 2 // rate + 1
+    assert " - INFO - 0:00 program 0 (Acoustic Grand Piano)" in err
+    assert f" - INFO - 0:{seconds:02d} program 40 (Violin)" in err
+
+
+def test_tune_sample_drums_wav_logs_drum_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    out = tmp_path / "drums.wav"
+    assert run(["tune", "sample", INPUT, "--drums", "36", "--wav", str(out)]) == 0
+    assert "0:00 drum note 36 (Bass Drum 1)" in capsys.readouterr().err
+    assert out.read_bytes().startswith(b"RIFF")
+
+
+def test_minutes_seconds() -> None:
+    assert _minutes_seconds(0) == "0:00"
+    assert _minutes_seconds(72_999.9) == "1:12"
+    assert _minutes_seconds(3_600_000) == "60:00"
 
 
 def test_render_without_numpy_is_a_clean_error(
