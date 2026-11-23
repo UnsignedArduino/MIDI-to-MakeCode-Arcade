@@ -12,7 +12,7 @@ Yamaha XG SysEx commands.
 3. Run `uv sync` to create a virtual environment and install all dependencies.
    Use `uv sync --extra optional` if you also want `--copy` (copy the output to
    the clipboard, which needs `pyperclip`), and `uv sync --extra audio` for
-   `render` and `tune ... --wav` (which need `numpy`, and `tqdm` for the
+   `render`, `tune ... --wav` and `params soundfont` (which need `numpy`, and `tqdm` for the
    progress bar). The dev
    environment `uv sync` makes already has both.
 
@@ -32,6 +32,9 @@ subcommand:
   instrument parameter files (see
   [Defining your own instrument parameter file](#defining-your-own-instrument-parameter-file)).
 * `params show`, `params check`: print or lint instrument parameter files.
+* `params soundfont`: export instrument parameters as an SF2 SoundFont, to hear
+  Arcade-like instruments in a MIDI editor (see
+  [Hearing the instruments in a MIDI editor](#hearing-the-instruments-in-a-midi-editor)).
 
 Run `uv run midi2mkcd COMMAND -h` for a command's options. Options go after
 the subcommand (`uv run midi2mkcd convert song.mid -v`).
@@ -281,6 +284,34 @@ uv run midi2mkcd tune replace "basic_test_3.mid" --drums 38 -p "my_params.yaml" 
 uv run midi2mkcd tune sample "basic_test_3.mid" --drums 35-40 -p "my_params.yaml" --allow-incomplete --copy
 ```
 
+#### Hearing the instruments in a MIDI editor
+
+`params soundfont` renders every instrument in a params file the way the
+simulator plays it and writes an SF2 SoundFont, so you can hear roughly what
+Arcade will play while you write the song in a MIDI editor. Melodic programs
+are bank 0 presets 0-127 and the drum kit is bank 128 preset 0. Samples are as
+loud as Arcade at velocity 127 and the default `music.volume()` (`--volume` to
+change), and loudness follows velocity linearly, as in the simulator. Needs the
+`audio` extra.
+
+```commandline
+uv run midi2mkcd params soundfont -p "my_params.yaml" -o "arcade.sf2"
+uv run midi2mkcd params soundfont -o "arcade_small.sf2" --step 3
+```
+
+Rendering every note of the bundled params gives a ~350 MB file at the default
+22050 Hz (about 15 s to build); `--step N` renders every Nth note and
+pitch-shifts the others, and `--notes` limits the range (the default, MIDI
+23-119, is the simulator's frequency table). It is a preview, not an exact
+copy:
+
+* Held notes loop a slice of the sustain, crossfaded at the loop end.
+* The SF2 release only approximates Arcade's (which is linear in amplitude).
+* With one velocity layer, pitch compensation is applied without Arcade's clamp
+  at velocity 127, so loud low notes can be louder than in Arcade.
+  `--velocity-layers N` renders exact levels at N times the size.
+* Synths differ in how they apply SoundFont velocity curves and releases.
+
 ### Use as a library
 
 `midi2mkcd` is also an importable library. `convert()` takes MIDI bytes, a
@@ -314,6 +345,8 @@ returns recovered MIDI file bytes, and `midi2mkcd.audio` renders audio:
 `to_wav_bytes(samples)` a WAV file. To render several songs one after
 another, `songs_events(songs)` lays them out 1 s apart for `synthesize`
 (`tuning.melodic_samples` / `drum_samples` give `tune sample`'s songs).
+`midi2mkcd.soundfont.build_soundfont(params, SoundFontOptions(...))` returns SF2
+file bytes.
 
 ### Help text
 
@@ -335,7 +368,7 @@ commands:
                         simulator plays it.
     tune                Tools for auditioning instrument parameters against a
                         song.
-    params              Print or check instrument parameter files.
+    params              Print, check or export instrument parameter files.
 
 Run 'midi2mkcd COMMAND -h' for a command's options.
 ```
@@ -445,17 +478,58 @@ commands:
 ```
 
 ```commandline
-usage: midi2mkcd params [-h] {show,check} ...
+usage: midi2mkcd params [-h] {show,check,soundfont} ...
 
-Print or check instrument parameter files.
+Print, check or export instrument parameter files.
 
 options:
-  -h, --help    show this help message and exit
+  -h, --help            show this help message and exit
 
 commands:
-  {show,check}
-    show        Print the bundled instrument parameters (or a blank template).
-    check       Lint an instrument parameter file.
+  {show,check,soundfont}
+    show                Print the bundled instrument parameters (or a blank
+                        template).
+    check               Lint an instrument parameter file.
+    soundfont           Export the instruments as an SF2 SoundFont, for a MIDI
+                        editor.
 ```
 
-Each `tune` and `params` subcommand has its own `-h` too.
+```commandline
+usage: midi2mkcd params soundfont [-h] [-p PARAMS] [--notes RANGE] [--step N]
+                                  [--rate HZ] [--velocity-layers N]
+                                  [--volume 0-255] [--allow-incomplete] -o OUT
+                                  [-v]
+
+Render every instrument in PARAMS the way the simulator plays it
+and write an SF2 SoundFont: General MIDI programs in bank 0 and
+the drum kit in bank 128, as loud as Arcade at the given volume.
+Needs numpy: pip install "midi2mkcd[audio]".
+
+Melodic samples loop their sustain, and the SF2 release only
+approximates Arcade's. Rendering every note gives a large file
+(hundreds of MB): use --step to render fewer notes.
+
+options:
+  -h, --help           show this help message and exit
+  -p, --params PARAMS  Instrument parameter YAML file. Default: the bundled
+                       parameters.
+  --notes RANGE        MIDI notes to map, e.g. "36-96". Default: 23-119, the
+                       simulator's frequency table (others play with no
+                       pitch).
+  --step N             Render every Nth note and pitch-shift the others from
+                       it. Default: 1 (every note).
+  --rate HZ            Sample rate. Default: 22050.
+  --velocity-layers N  Render N velocity layers per note, for Arcade's exact
+                       loudness with pitch compensation, at N times the size.
+                       Default: 1.
+  --volume 0-255       music.volume() to match. Default: 128, Arcade's
+                       default.
+  --allow-incomplete   Skip incomplete or invalid entries in the params file
+                       instead of failing.
+  -o, --output OUT     SF2 file to write (overwritten if it exists). Required:
+                       binary output never goes to stdout.
+  -v, --verbose        Show debug logging on stderr, and tracebacks for
+                       errors.
+```
+
+Each other `tune` and `params` subcommand has its own `-h` too.

@@ -18,7 +18,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import Any, Self
 
-from midi2mkcd import __version__, audio, render, tuning
+from midi2mkcd import __version__, audio, render, soundfont, tuning
 from midi2mkcd.api import (
     ParamsInput,
     convert,
@@ -75,6 +75,13 @@ def _volume_arg(value: str) -> int:
         raise ArgumentTypeError(f"not an integer: {value!r}") from None
     if not 0 <= number <= 255:
         raise ArgumentTypeError(f"must be 0-255: {number}")
+    return number
+
+
+def _velocity_layers_arg(value: str) -> int:
+    number = _positive_int(value)
+    if number > 127:
+        raise ArgumentTypeError(f"must be 1-127: {number}")
     return number
 
 
@@ -244,7 +251,9 @@ def build_parser() -> ArgumentParser:
     _add_input(p, "MIDI file to report on.")
     _add_tune_common(p)
 
-    params = _group(commands, "params", "Print or check instrument parameter files.")
+    params = _group(
+        commands, "params", "Print, check or export instrument parameter files."
+    )
     p = _leaf(params, "show", _run_params_show,
               "Print the bundled instrument parameters (or a blank template).",
               "Print the bundled instrument parameters, as a starting point for\n"
@@ -261,6 +270,42 @@ def build_parser() -> ArgumentParser:
     p.add_argument("-p", "--params", type=Path, metavar="PARAMS",
                    help="File to check. Default: the bundled parameters.")  # fmt: skip
     _add_verbose(p)
+
+    p = _leaf(params, "soundfont", _run_params_soundfont,
+              "Export the instruments as an SF2 SoundFont, for a MIDI editor.",
+              "Render every instrument in PARAMS the way the simulator plays it\n"
+              "and write an SF2 SoundFont: General MIDI programs in bank 0 and\n"
+              "the drum kit in bank 128, as loud as Arcade at the given volume.\n"
+              "Needs numpy: pip install \"midi2mkcd[audio]\".\n\n"
+              "Melodic samples loop their sustain, and the SF2 release only\n"
+              "approximates Arcade's. Rendering every note gives a large file\n"
+              "(hundreds of MB): use --step to render fewer notes.")  # fmt: skip
+    p.add_argument("-p", "--params", type=Path, metavar="PARAMS",
+                   help="Instrument parameter YAML file. Default: the bundled "
+                   "parameters.")  # fmt: skip
+    p.add_argument("--notes", type=range_arg, metavar="RANGE",
+                   default=list(soundfont.DEFAULT_NOTES),
+                   help='MIDI notes to map, e.g. "36-96". Default: 23-119, the '
+                   "simulator's frequency table (others play with no pitch).")  # fmt: skip
+    p.add_argument("--step", type=_positive_int, default=1, metavar="N",
+                   help="Render every Nth note and pitch-shift the others from it. "
+                   "Default: 1 (every note).")  # fmt: skip
+    p.add_argument("--rate", type=_positive_int, default=soundfont.DEFAULT_RATE,
+                   metavar="HZ",
+                   help=f"Sample rate. Default: {soundfont.DEFAULT_RATE}.")  # fmt: skip
+    p.add_argument("--velocity-layers", type=_velocity_layers_arg, default=1,
+                   metavar="N",
+                   help="Render N velocity layers per note, for Arcade's exact "
+                   "loudness with pitch compensation, at N times the size. "
+                   "Default: 1.")  # fmt: skip
+    p.add_argument("--volume", type=_volume_arg, default=MUSIC_DEFAULT_VOLUME,
+                   metavar="0-255",
+                   help="music.volume() to match. Default: "
+                   f"{MUSIC_DEFAULT_VOLUME}, Arcade's default.")  # fmt: skip
+    p.add_argument("--allow-incomplete", action="store_true",
+                   help="Skip incomplete or invalid entries in the params file "
+                   "instead of failing.")  # fmt: skip
+    _add_binary_output(p, "SF2 file to write")
     return parser
 
 
@@ -511,6 +556,26 @@ def _run_params_check(args: Namespace) -> int:
     if not problems:
         logger.info("No problems found")
     return 1 if problems else 0
+
+
+def _run_params_soundfont(args: Namespace) -> int:
+    params = _read_params(args.params, allow_incomplete=args.allow_incomplete)
+    options = soundfont.SoundFontOptions(
+        notes=args.notes,
+        step=args.step,
+        rate=args.rate,
+        velocity_layers=args.velocity_layers,
+        volume=args.volume,
+    )
+    source = args.params.name if args.params is not None else "bundled params"
+    with _ProgressBar("Rendering", "sample") as progress:
+        data = soundfont.build_soundfont(
+            params,
+            options,
+            comment=f"Made by midi2mkcd {__version__} from {source}",
+            progress=progress,
+        )
+    return _emit_bytes(data, args.output)
 
 
 def _read_params(path: Path | None, *, allow_incomplete: bool = False) -> ParamsInput:

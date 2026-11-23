@@ -33,8 +33,8 @@ conversion algorithm or the existing golden outputs.
 | Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 2 + `render` (section 4) | **Done** (2026-11-23, branch `render-features`) | numpy `audio` extra, `synthesize` / `render_song` / `to_wav_bytes`, `midi2mkcd render` (tqdm progress bar, speed log line), tests, README/CLAUDE.md. Speeding it up is deferred. Checked against calibration recording 3 with `testing/calibration/analysis/compare.py`: matches to ~0.1 dB. See "Stage 2 status" in section 4. |
 | `tune replace/sample --wav`     | **Done** (2026-11-23, branch `render-features`) | `audio.songs_events` (songs 1 s apart, Stage 1), `tuning.melodic_samples` / `drum_samples` (the sampler's `ConversionResult`s), `cli._write_wav` shared with `render`. The `--wav` vs `-o`/`--copy`/`-f` check is in `main` (exit 2), not an argparse group, since `-o` and `--copy` go together. `tune sample --wav` logs e.g. `0:04 program 41 (Viola)`. No `--rate`/`--volume`/`--no-velocity` on `tune`: use `render` on the text output for those. |
-| `params soundfont` (section 5)  | **Next** | |
-| `params fit` (section 6)        | Not started | |
+| `params soundfont` (section 5)  | **Done** (2026-11-23, branch `render-features`) | `soundfont.py` (`build_soundfont`, `estimate_size`, `write_sf2`), `midi2mkcd params soundfont`, `tests/unit/test_soundfont.py` with an independent reader (`tests/helpers.py::read_sf2`). Bundled params at `--step 1`: 12,477 samples, 354 MB, ~13 s. Heard by the user in SpessaSynth at `--step 3` (146 MB, estimate 158 MB): "sounds great and almost identical" to Arcade. See "Status" at the top of section 5. |
+| `params fit` (section 6)        | **Next** | |
 | Two-layer instruments           | Deferred (last) | |
 
 Facts marked **(verified)** were read from the upstream source at the commits
@@ -1122,6 +1122,52 @@ midi2mkcd params soundfont [-p PARAMS] -o OUT.sf2 [--notes RANGE] [--step N] [--
 Lets the user hear Arcade-ish instruments in a MIDI editor while writing a
 song. Lives under `params` because it exports a params file, not a song.
 
+### Status (2026-11-23): done, heard in SpessaSynth
+
+Implemented as designed below, with these decisions and findings:
+
+- **Loudness:** samples are rendered at sequencer volume 1024 and scaled in
+  float by `volume / 1024 · 127 / 128` (`--volume`, default 128, like
+  `render`), so velocity 127 matches Arcade. Baked into the samples, not
+  `initialAttenuation`, because players scale that generator differently.
+- **Modulators** (every instrument zone): velocity → attenuation overridden
+  with 480 cB, and the velocity → filter-cutoff default set to 0 in both
+  spellings (amount source 0 and FluidSynth's switch `0x0C02`).
+- **Loops:** the steady part starts after attack + decay (and the pitch
+  envelope's), **then at each LFO's next sample point**: `renderInstrument`
+  samples an LFO every max(500/f, 50) ms from the note's start, and the ramp
+  from the envelope's last point to the next LFO point does not repeat
+  (missing this put Seashore 4.6 dB off). LFO period = 1000/f ms up to 10 Hz,
+  else 1000/gcd(f, 20) ms; two LFOs use the LCM (or the longer period above
+  4 s). Loop ≥ 100 ms (≥ 500 ms for noise waveforms 4/5). The loop end then
+  moves by up to one waveform period (≤ 50 ms; not for noise) to the best
+  normalised correlation with the points before the loop start; the
+  crossfade (20 ms) is linear when that correlation is ≥ 0.5, equal-power
+  otherwise. 8 post-loop points copy the loop start.
+- **One-shots:** sustain 0 without an amp LFO (or amplitude 0); trailing
+  points that round to 0 are trimmed. Drums are one-shots with
+  `releaseVolEnv` 8000 (≈ −1 dB/s) so a short note-off doesn't cut them.
+- **`--step`:** groups of consecutive `--notes`, rendered at the middle note;
+  gaps in `--notes` start a new group so unrequested keys stay unmapped.
+  Noise (waveform 5) zones get `scaleTuning` 0.
+- **Velocity layers:** with 1 layer, pitch compensation is unclamped (as
+  planned); with N > 1 each layer uses Arcade's rounded, clamped velocity at
+  the layer's top, divided by top/127 for the linear modulator.
+- **Instruments** go through `encode_instrument`/`decode_instrument` first, so
+  samples use the integers Arcade gets.
+- **Checked:** looping each bundled program for 1.5 s at MIDI 40/60/84 vs
+  `synthesize` of a 1.5 s note: median worst 50 ms RMS deviation 0.0 dB;
+  worst cases are Telephone Ring (tunable noise, sparse content: the
+  reference itself varies by 25 dB between windows) and a few ≤ 1 dB at
+  MIDI 40. Size is ~1/3 under the plan's estimate (354 MB at `--step 1`).
+- **Heard in a player:** the user played the bundled params at `--step 3`
+  (146 MB; `estimate_size` said 158 MB, an upper bound as intended) in
+  SpessaSynth: "sounds great and almost identical" to Arcade. So the
+  defaults `RELEASE_FACTOR` (2.0) and `VELOCITY_ATTENUATION_CB` (480) are
+  good enough by ear there; they were not measured, and FluidSynth (not
+  installed here) is untested, so no FluidSynth test exists.
+- The whole file is built in memory (peak ≈ 2× the file size).
+
 ### Approach
 
 - Bank 0 presets 0–127 for melodic programs; bank 128 preset 0 for the drum
@@ -1376,8 +1422,9 @@ working).
    `recover-midi`). `tests/integration/test_api.py::test_drum_map_is_right_for_every_drum_track`
    covers it.
 5. **SF2 velocity modulator override** and the **release-time factor**:
-   measure with FluidSynth and at least one MIDI editor the user actually
-   uses.
+   **Partly answered** (2026-11-23): with 480 cB and a 2.0 factor the SF2
+   sounds almost identical to Arcade in SpessaSynth, by ear. Not measured,
+   and not tried in FluidSynth; revisit only if another player sounds off.
 6. **Dependency wheels for Python 3.14** (numpy, scipy, cma, any SF2 test
    reader). **numpy: answered** (2026-11-23): numpy 2.5.5 has cp314 wheels
    and is now the `audio` extra and in the dev group. Still to confirm with

@@ -6,7 +6,7 @@ import wave
 from pathlib import Path
 
 import pytest
-from helpers import FIXTURE_MIDI, GOLDEN
+from helpers import FIXTURE_MIDI, GOLDEN, read_sf2
 
 from midi2mkcd import (
     __version__,
@@ -150,6 +150,7 @@ def test_verbose_reraises_errors(tmp_path: Path) -> None:
         ["params", "-h"],
         ["params", "show", "-h"],
         ["params", "check", "-h"],
+        ["params", "soundfont", "-h"],
         ["recover-midi", "-h"],
         ["render", "-h"],
     ],
@@ -182,6 +183,10 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["render", INPUT],
         ["render", INPUT, "-o", "x.wav", "--volume", "256"],
         ["render", INPUT, "-o", "x.wav", "--rate", "0"],
+        ["params", "soundfont"],
+        ["params", "soundfont", "-o", "x.sf2", "--velocity-layers", "128"],
+        ["params", "soundfont", "-o", "x.sf2", "--step", "0"],
+        ["params", "soundfont", "-o", "x.sf2", "--notes", "x"],
         ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-o", "x"],
         ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "--copy"],
         ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-f", "hex"],
@@ -411,3 +416,46 @@ def test_render_without_numpy_is_a_clean_error(
     monkeypatch.setitem(sys.modules, "numpy", None)
     assert run(["render", INPUT, "-o", str(tmp_path / "out.wav")]) == 1
     assert 'needs numpy: pip install "midi2mkcd[audio]"' in capsys.readouterr().err
+
+
+def test_params_soundfont_writes_an_sf2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "arcade.sf2"
+    argv = ["params", "soundfont", "-o", str(out), "--notes", "60-61", "--step", "2"]
+    assert run([*argv, "--rate", "8000"]) == 0
+    sf = read_sf2(out.read_bytes())
+    assert len(sf.presets) == 129
+    assert len(sf.samples) == 128 + 61
+    assert sf.samples[0].rate == 8000
+    assert b"bundled params" in sf.info["ICMT"]
+    err = capsys.readouterr().err
+    assert "Expected size: up to" in err and "--step 2" in err
+
+
+def test_params_soundfont_with_incomplete_params(tmp_path: Path) -> None:
+    params = tmp_path / "partial.yaml"
+    params.write_text(
+        "melodic_instruments:\n"
+        "  - instrument: 5\n"
+        "    waveform: sine\n"
+        "  - instrument: 7\n"
+        "    waveform: square\n"
+        "    amp_envelope: { attack: 5, decay: 50, sustain: 500, release: 50, "
+        "amplitude: 512 }\n"
+        "    pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, "
+        "amplitude: 0 }\n"
+        "    amp_lfo: { frequency: 0, amplitude: 0 }\n"
+        "    pitch_lfo: { frequency: 0, amplitude: 0 }\n"
+        "drum_instruments: []\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "partial.sf2"
+    argv = ["params", "soundfont", "-p", str(params), "-o", str(out), "--notes", "60"]
+    assert run(argv) == 1
+    assert run([*argv, "--allow-incomplete"]) == 0
+    sf = read_sf2(out.read_bytes())
+    assert [(name, program, bank) for name, program, bank, _ in sf.presets] == [
+        ("Clavinet", 7, 0)
+    ]
+    assert b"partial.yaml" in sf.info["ICMT"]
