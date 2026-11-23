@@ -1,3 +1,5 @@
 # Golden outputs are compared byte for byte, so keep them LF on every OS
 tests/fixtures/golden/*.ts text eol=lf
+tests/fixtures/golden/*.json text eol=lf
+tests/fixtures/sim_cases.json text eol=lf
 *.mid binary

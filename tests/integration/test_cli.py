@@ -1,12 +1,22 @@
 """Runs the CLI in-process and checks its output, exit statuses and errors."""
 
+import re
+import sys
+import wave
 from pathlib import Path
 
 import pytest
-from helpers import FIXTURE_MIDI, GOLDEN
+from helpers import FIXTURE_MIDI, GOLDEN, read_sf2
 
-from midi2mkcd import __version__, default_instrument_params_text, render, tuning
-from midi2mkcd.cli import main
+from midi2mkcd import (
+    __version__,
+    convert,
+    default_instrument_params_text,
+    render,
+    tuning,
+)
+from midi2mkcd.cli import _minutes_seconds, _render_summary, main
+from midi2mkcd.song_to_midi import song_to_midi
 
 INPUT = str(FIXTURE_MIDI)
 
@@ -140,6 +150,9 @@ def test_verbose_reraises_errors(tmp_path: Path) -> None:
         ["params", "-h"],
         ["params", "show", "-h"],
         ["params", "check", "-h"],
+        ["params", "soundfont", "-h"],
+        ["recover-midi", "-h"],
+        ["render", "-h"],
     ],
     ids=" ".join,
 )
@@ -166,6 +179,29 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["tune", "sample", INPUT, "--melodics", "x"],
         ["params", "check", "-o", "x"],
         ["convert", INPUT, "-f", "wav"],
+        ["recover-midi", INPUT],
+        ["render", INPUT],
+        ["render", INPUT, "-o", "x.wav", "--volume", "256"],
+        ["render", INPUT, "-o", "x.wav", "--rate", "0"],
+        ["params", "soundfont"],
+        ["params", "soundfont", "-o", "x.sf2", "--velocity-layers", "128"],
+        ["params", "soundfont", "-o", "x.sf2", "--step", "0"],
+        ["params", "soundfont", "-o", "x.sf2", "--notes", "x"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-o", "x"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "--copy"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-f", "hex"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--wav", "x.wav", "-o", "x"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--wav", "x.wav", "--copy"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--audio", "x.wav", "--copy"],
+        ["render", INPUT, "-o", "x.aiff"],
+        ["render", INPUT, "-o", "x"],
+        ["render", INPUT, "-o", "x.wav", "--quality", "1.5"],
+        ["render", INPUT, "-o", "x.wav", "--quality", "x"],
+        ["render", INPUT, "-o", "x.opus", "--rate", "22050"],
+        ["render", INPUT, "-o", "x.mp3", "--rate", "96000"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--audio", "x.aiff"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--audio", "x.aiff"],
+        ["params", "soundfont", "-o", "x.sf3", "--quality", "-0.1"],
     ],
     ids=lambda argv: " ".join(Path(a).name for a in argv) or "bare",
 )
@@ -179,3 +215,325 @@ def test_usage_errors_exit_two(
 def test_replace_error_names_the_options(capsys: pytest.CaptureFixture[str]) -> None:
     assert run(["tune", "replace", INPUT]) == 2
     assert "give --melodics, --drums or both" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", ["--audio", "--wav"])
+def test_audio_error_names_the_clashing_options(
+    flag: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wav = tmp_path / "x.wav"
+    argv = ["tune", "replace", INPUT, "--drums", "36", flag, str(wav)]
+    assert run([*argv, "-o", "x", "--copy", "-f", "code"]) == 2
+    assert (
+        "--audio can't be used with -o/--output, --copy, -f/--format"
+        in capsys.readouterr().err
+    )
+    assert not wav.exists()
+
+
+def test_recover_midi_writes_a_midi_file(tmp_path: Path) -> None:
+    song = tmp_path / "song.ts"
+    assert run(["convert", INPUT, "-f", "code_extra", "-o", str(song)]) == 0
+    out = tmp_path / "recovered.mid"
+    assert run(["recover-midi", str(song), "-o", str(out)]) == 0
+    assert out.read_bytes() == song_to_midi(song.read_text(encoding="utf-8"))
+    assert out.read_bytes().startswith(b"MThd")
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (b"// no song", "found none"),
+        (b"hex`00` hex`01`", "found 2"),
+        (b"\xff\xfe\x00garbage", "not a UTF-8 text file"),
+    ],
+    ids=["no literal", "two literals", "binary"],
+)
+def test_recover_midi_bad_input_is_a_clean_error(
+    content: bytes, message: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    song = tmp_path / "song.ts"
+    song.write_bytes(content)
+    assert run(["recover-midi", str(song), "-o", str(tmp_path / "out.mid")]) == 1
+    err = capsys.readouterr().err
+    assert message in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "out.mid").exists()
+
+
+def _wav_frames(path: Path) -> tuple[int, int, bytes]:
+    with wave.open(str(path)) as w:
+        return w.getnchannels(), w.getframerate(), w.readframes(w.getnframes())
+
+
+def test_render_midi_and_song_text_give_the_same_wav(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    from_midi = tmp_path / "midi.wav"
+    assert run(["render", INPUT, "-o", str(from_midi), "--rate", "22050"]) == 0
+    channels, rate, frames = _wav_frames(from_midi)
+    assert (channels, rate) == (1, 22050)
+    assert len(frames) > 2 * 22050 and any(frames)
+
+    # Content decides the type: song text in a .mid file works
+    song = tmp_path / "song.mid"
+    song.write_text(convert(FIXTURE_MIDI).to_typescript("code"), encoding="utf-8")
+    from_text = tmp_path / "text.wav"
+    assert run(["render", str(song), "-o", str(from_text), "--rate", "22050"]) == 0
+    assert _wav_frames(from_text) == (channels, rate, frames)
+
+
+def test_render_options_change_the_output(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    outputs: list[bytes] = []
+    for extra in ([], ["--volume", "255"], ["--no-velocity"]):
+        out = tmp_path / f"{len(outputs)}.wav"
+        assert run(["render", INPUT, "-o", str(out), "--rate", "8000", *extra]) == 0
+        outputs.append(_wav_frames(out)[2])
+    assert len(set(outputs)) == 3
+
+
+@pytest.mark.parametrize(
+    ("content", "params", "message"),
+    [
+        (b"RIFF\x00\x00\x00\x00RMIDdata", False, "RIFF MIDI"),
+        (b"// no song", False, "found none"),
+        (b"\xff\xfe\x00garbage", False, "neither a MIDI file nor"),
+        (b"hex`0000`", True, "-p only applies to MIDI input"),
+    ],
+    ids=["rmi", "no literal", "binary", "text with -p"],
+)
+def test_render_bad_input_is_a_clean_error(
+    content: bytes,
+    params: bool,
+    message: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    song = tmp_path / "input"
+    song.write_bytes(content)
+    argv = ["render", str(song), "-o", str(tmp_path / "out.wav")]
+    if params:
+        params_file = tmp_path / "params.yaml"
+        params_file.write_text(default_instrument_params_text(), encoding="utf-8")
+        argv += ["-p", str(params_file)]
+    assert run(argv) == 1
+    err = capsys.readouterr().err
+    assert message in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "out.wav").exists()
+
+
+def test_render_progress_bar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    tqdm = pytest.importorskip("tqdm")
+    # Captured stderr isn't a terminal, so force the bar on to see it
+    real_tqdm = tqdm.tqdm
+    monkeypatch.setattr(
+        tqdm, "tqdm", lambda **kwargs: real_tqdm(**{**kwargs, "disable": False})
+    )
+    out = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
+    err = capsys.readouterr().err
+    assert "Rendering: 100%" in err
+    assert " sound/s" in err or "sound/s]" in err
+
+
+def test_render_logs_its_speed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    out = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
+    assert re.search(
+        r"Rendered \d+\.\d\d s at 8000 Hz in \d+\.\d\d s \(speed=\d+\.\dx\)",
+        capsys.readouterr().err,
+    )
+    assert _render_summary(217.68, 48000, 13.0) == (
+        "Rendered 217.68 s at 48000 Hz in 13.00 s (speed=16.7x)"
+    )
+    assert _render_summary(1.0, 48000, 0.0) == "Rendered 1.00 s at 48000 Hz in 0.00 s"
+
+
+def test_render_without_tqdm_still_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("numpy")
+    monkeypatch.setitem(sys.modules, "tqdm", None)
+    out = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
+    assert out.read_bytes().startswith(b"RIFF")
+
+
+def test_tune_replace_wav_matches_rendering_its_code(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    code = tmp_path / "replace.ts"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "-o", str(code)]) == 0
+    from_code = tmp_path / "code.wav"
+    assert run(["render", str(code), "-o", str(from_code)]) == 0
+    direct = tmp_path / "direct.wav"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "--wav", str(direct)]) == 0
+    assert _wav_frames(direct) == _wav_frames(from_code)
+    assert any(_wav_frames(direct)[2])
+
+
+def test_tune_sample_wav_plays_each_instrument_in_turn(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    singles = []
+    for program in (0, 40):
+        out = tmp_path / f"{program}.wav"
+        argv = ["tune", "replace", INPUT, "--melodics", str(program), "--wav", str(out)]
+        assert run(argv) == 0
+        singles.append(_wav_frames(out))
+    capsys.readouterr()
+
+    out = tmp_path / "sample.wav"
+    assert run(["tune", "sample", INPUT, "--melodics", "0,40", "--wav", str(out)]) == 0
+    err = capsys.readouterr().err
+    channels, rate, frames = _wav_frames(out)
+    assert (channels, rate) == (1, 48000)
+    # The first song, 1 s of silence, then the second song
+    first, second = singles[0][2], singles[1][2]
+    gap = b"\x00\x00" * rate
+    assert frames == first + gap + second
+
+    seconds = len(first) // 2 // rate + 1
+    assert " - INFO - 0:00 program 0 (Acoustic Grand Piano)" in err
+    assert f" - INFO - 0:{seconds:02d} program 40 (Violin)" in err
+
+
+def test_tune_sample_drums_wav_logs_drum_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    out = tmp_path / "drums.wav"
+    assert run(["tune", "sample", INPUT, "--drums", "36", "--wav", str(out)]) == 0
+    assert "0:00 drum note 36 (Bass Drum 1)" in capsys.readouterr().err
+    assert out.read_bytes().startswith(b"RIFF")
+
+
+def test_minutes_seconds() -> None:
+    assert _minutes_seconds(0) == "0:00"
+    assert _minutes_seconds(72_999.9) == "1:12"
+    assert _minutes_seconds(3_600_000) == "60:00"
+
+
+def test_render_without_numpy_is_a_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(sys.modules, "numpy", None)
+    assert run(["render", INPUT, "-o", str(tmp_path / "out.wav")]) == 1
+    assert 'needs numpy: pip install "midi2mkcd[audio]"' in capsys.readouterr().err
+
+
+def test_params_soundfont_writes_an_sf2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "arcade.sf2"
+    argv = ["params", "soundfont", "-o", str(out), "--notes", "60-61", "--step", "2"]
+    assert run([*argv, "--rate", "8000"]) == 0
+    sf = read_sf2(out.read_bytes())
+    assert len(sf.presets) == 129
+    assert len(sf.samples) == 128 + 61
+    assert sf.samples[0].rate == 8000
+    assert b"bundled params" in sf.info["ICMT"]
+    err = capsys.readouterr().err
+    assert "Expected size: up to" in err and "--step 2" in err
+
+
+def test_params_soundfont_with_incomplete_params(tmp_path: Path) -> None:
+    params = tmp_path / "partial.yaml"
+    params.write_text(
+        "melodic_instruments:\n"
+        "  - instrument: 5\n"
+        "    waveform: sine\n"
+        "  - instrument: 7\n"
+        "    waveform: square\n"
+        "    amp_envelope: { attack: 5, decay: 50, sustain: 500, release: 50, "
+        "amplitude: 512 }\n"
+        "    pitch_envelope: { attack: 0, decay: 0, sustain: 0, release: 0, "
+        "amplitude: 0 }\n"
+        "    amp_lfo: { frequency: 0, amplitude: 0 }\n"
+        "    pitch_lfo: { frequency: 0, amplitude: 0 }\n"
+        "drum_instruments: []\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "partial.sf2"
+    argv = ["params", "soundfont", "-p", str(params), "-o", str(out), "--notes", "60"]
+    assert run(argv) == 1
+    assert run([*argv, "--allow-incomplete"]) == 0
+    sf = read_sf2(out.read_bytes())
+    assert [(name, program, bank) for name, program, bank, _ in sf.presets] == [
+        ("Clavinet", 7, 0)
+    ]
+    assert b"partial.yaml" in sf.info["ICMT"]
+
+
+def test_render_flac_and_ogg(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    sf = pytest.importorskip("soundfile")
+    wav = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(wav), "--rate", "8000"]) == 0
+    _, _, frames = _wav_frames(wav)
+    flac = tmp_path / "OUT.FLAC"  # extensions are case-insensitive
+    assert run(["render", INPUT, "-o", str(flac), "--rate", "8000"]) == 0
+    decoded, rate = sf.read(str(flac), dtype="int16")
+    assert rate == 8000
+    assert decoded.astype("<i2").tobytes() == frames
+    ogg = tmp_path / "out.ogg"
+    assert (
+        run(["render", INPUT, "-o", str(ogg), "--rate", "8000", "--quality", "1"]) == 0
+    )
+    decoded, rate = sf.read(str(ogg), dtype="int16")
+    assert (rate, 2 * len(decoded)) == (8000, len(frames))
+    assert ogg.stat().st_size < flac.stat().st_size
+
+
+def test_tune_replace_audio_ogg(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    sf = pytest.importorskip("soundfile")
+    wav = tmp_path / "out.wav"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "--audio", str(wav)]) == 0
+    ogg = tmp_path / "out.ogg"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "--wav", str(ogg)]) == 0
+    decoded, rate = sf.read(str(ogg))
+    assert (rate, 2 * len(decoded)) == (48000, len(_wav_frames(wav)[2]))
+
+
+def test_compressed_output_without_soundfile_is_a_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    monkeypatch.setitem(sys.modules, "soundfile", None)
+    message = 'needs soundfile: pip install "midi2mkcd[compress]"'
+    assert run(["render", INPUT, "-o", str(tmp_path / "out.flac")]) == 1
+    assert message in capsys.readouterr().err
+    sf3 = ["params", "soundfont", "-o", str(tmp_path / "x.sf3"), "--notes", "60"]
+    assert run(sf3) == 1
+    assert message in capsys.readouterr().err
+    assert not list(tmp_path.iterdir())
+    # The uncompressed formats still work
+    assert (
+        run(["render", INPUT, "-o", str(tmp_path / "out.wav"), "--rate", "8000"]) == 0
+    )
+    sf2 = ["params", "soundfont", "-o", str(tmp_path / "x.sf2"), "--notes", "60"]
+    assert run([*sf2, "--rate", "8000"]) == 0
+
+
+def test_params_soundfont_writes_an_sf3(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("soundfile")
+    argv = ["params", "soundfont", "--notes", "60-61", "--step", "2", "--rate", "8000"]
+    sf2_path, sf3_path = tmp_path / "arcade.sf2", tmp_path / "arcade.sf3"
+    assert run([*argv, "-o", str(sf2_path)]) == 0
+    assert run([*argv, "-o", str(sf3_path), "--quality", "0.8"]) == 0
+    assert "SF3 size:" in capsys.readouterr().err
+    sf2, sf3 = read_sf2(sf2_path.read_bytes()), read_sf2(sf3_path.read_bytes())
+    assert sf3.info["ifil"] == b"\x03\x00\x00\x00"
+    assert sf3.presets == sf2.presets and sf3.instruments == sf2.instruments
+    assert all(h.sample_type == 0x11 for h in sf3.samples)
+    assert len(sf3_path.read_bytes()) < len(sf2_path.read_bytes())

@@ -16,7 +16,9 @@ from midi2mkcd.api import (
 from midi2mkcd.errors import (
     InstrumentParamsError,
     InvalidMidiError,
+    InvalidSongError,
     Midi2MkcdError,
+    MissingDependencyError,
     SongConstraintError,
 )
 
@@ -25,7 +27,9 @@ __all__ = [
     "ConversionResult",
     "InstrumentParamsError",
     "InvalidMidiError",
+    "InvalidSongError",
     "Midi2MkcdError",
+    "MissingDependencyError",
     "OutputFormat",
     "SongConstraintError",
     "__version__",

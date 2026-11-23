@@ -21,6 +21,14 @@ midi2mkcd = "midi2mkcd.cli:main"
 optional = [
     "pyperclip>=1.11.0",
 ]
+audio = [
+    "numpy>=2.5.5",
+    "tqdm>=4.70.1",
+]
+compress = [
+    "numpy>=2.5.5",
+    "soundfile>=0.14.0",
+]
 
 [tool.hatch.version]
 # Single source of truth: midi2mkcd.__version__
@@ -32,17 +40,21 @@ packages = ["src/midi2mkcd"]
 [dependency-groups]
 dev = [
     "mypy>=2.3.0",
+    "numpy>=2.5.5",
     "pre-commit>=4.6.1",
     "pytest>=9.2.0",
     "ruff>=0.16.0",
+    "soundfile>=0.14.0",
+    "tqdm>=4.70.1",
     "types-pyperclip>=1.11.0.20260508",
     "types-pyyaml>=6.0.12.20260724",
+    "types-tqdm>=4.70.0.20261122",
 ]
 
 [tool.ruff]
 target-version = "py314"
 # Its Python blocks are design sketches, not code to keep formatted
-extend-exclude = ["REFACTOR_PLAN.md"]
+extend-exclude = ["REFACTOR_PLAN.md", "RENDER_FEATURES_PLAN.md"]
 
 [tool.mypy]
 python_version = "3.14"
@@ -51,7 +63,7 @@ strict = true
 mypy_path = "tests"
 
 [[tool.mypy.overrides]]
-module = ["mido.*"]
+module = ["mido.*", "soundfile.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

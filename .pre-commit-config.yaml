@@ -17,7 +17,10 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: uv run mypy
+        # One run over the whole project: per-file batches (run in parallel)
+        # can miss src/, and then mypy treats midi2mkcd as an untyped
+        # installed package
+        entry: uv run mypy src tests
         language: system
         types: [ python ]
-        pass_filenames: true
+        pass_filenames: false

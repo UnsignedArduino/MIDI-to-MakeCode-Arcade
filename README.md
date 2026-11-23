@@ -11,7 +11,11 @@ Yamaha XG SysEx commands.
 2. Clone this repo.
 3. Run `uv sync` to create a virtual environment and install all dependencies.
    Use `uv sync --extra optional` if you also want `--copy` (copy the output to
-   the clipboard, which needs `pyperclip`).
+   the clipboard, which needs `pyperclip`), `uv sync --extra audio` for
+   `render`, `tune ... --audio` and `params soundfont` (which need `numpy`, and `tqdm` for the
+   progress bar), and `uv sync --extra compress` to also write FLAC, Ogg, Opus
+   and MP3 audio and SF3 SoundFonts (which need `soundfile`). The dev
+   environment `uv sync` makes already has all of them.
 
 ## Usage
 
@@ -20,10 +24,18 @@ CLI app). `uv run python -m midi2mkcd` works too. Every command is a
 subcommand:
 
 * `convert`: convert a MIDI file to Arcade code.
+* `recover-midi`: turn converted Arcade code back into a MIDI file (lossy; see
+  [Recovering a lost MIDI file](#recovering-a-lost-midi-file)).
+* `render`: play a MIDI file or converted song into an audio file, sounding like
+  the MakeCode Arcade simulator (see
+  [Listening without Arcade](#listening-without-arcade)).
 * `tune replace`, `tune sample`, `tune report`: tools for writing and tuning
   instrument parameter files (see
   [Defining your own instrument parameter file](#defining-your-own-instrument-parameter-file)).
 * `params show`, `params check`: print or lint instrument parameter files.
+* `params soundfont`: export instrument parameters as an SF2 or SF3 SoundFont, to hear
+  Arcade-like instruments in a MIDI editor (see
+  [Hearing the instruments in a MIDI editor](#hearing-the-instruments-in-a-midi-editor)).
 
 Run `uv run midi2mkcd COMMAND -h` for a command's options. Options go after
 the subcommand (`uv run midi2mkcd convert song.mid -v`).
@@ -81,14 +93,75 @@ uv run midi2mkcd convert "Never Gonna Give You Up.mid" -f code_extra
 
 `-f code_extra` writes out extra information that the visualizer above can use
 to make the visuals more accurate.
-[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example (once
-again, at the time of writing, per-chord velocity is in beta, so import into
-the beta editor if desired). In the visualizer, you can press B to switch
+[Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example. In
+the visualizer, you can press B to switch
 through the main interface, the track viewer (use arrow keys to highlight a
 track if desired), and the lyric viewer. Any lyrics (lyric meta message only so
 far) in the MIDI file will also be exported.
 
 Add `-v` to any command for debug logging (and full tracebacks for errors).
+
+### Recovering a lost MIDI file
+
+If you only have the converted code, `recover-midi` turns it back into a MIDI
+file (`-o` is required):
+
+```commandline
+uv run midi2mkcd recover-midi "Never Gonna Give You Up.ts" -o "recovered.mid"
+```
+
+The input is a text file holding exactly one `` hex`...` `` song, i.e. the
+output of `convert` in any format (not `tune sample`, which holds several).
+It is lossy: timing is quantized to the song's ticks (written at 120 BPM),
+note lengths include the converter's gate fix, and velocities are approximate.
+A `-f code_extra` file gives the exact instruments, drum notes and lyrics.
+From plain hex, instruments and drums are found by matching each track
+against the instrument parameter file (pass the one you converted with as
+`-p`), and lyrics are lost. More than 15 instruments spill onto a second MIDI
+port.
+
+### Listening without Arcade
+
+`render` synthesizes a song the way the MakeCode Arcade browser simulator
+plays it (Chrome's Web Audio) and writes a mono audio file (`-o` is
+required). It needs numpy (`uv sync --extra audio`, or
+`pip install "midi2mkcd[audio]"`).
+
+```commandline
+uv run midi2mkcd render "Never Gonna Give You Up.mid" -o "never.wav"
+uv run midi2mkcd render "Never Gonna Give You Up.ts" -o "never.ogg"
+```
+
+The format comes from the output's extension:
+
+| Extension | Format | Notes |
+| --- | --- | --- |
+| `.wav` | 16-bit PCM | Default choice; needs no other extra. A 3-minute song at 48 kHz is ~17 MB. |
+| `.flac` | FLAC, lossless | The same samples as the WAV, about half the size. |
+| `.ogg` | Ogg Vorbis, lossy | Roughly a tenth of the WAV. |
+| `.opus` | Ogg Opus, lossy | Only at `--rate` 8000, 12000, 16000, 24000 or 48000. |
+| `.mp3` | MP3, lossy | Only at `--rate` 8000 to 48000 (the MPEG rates). |
+
+All but WAV need the `compress` extra (`uv sync --extra compress`, or
+`pip install "midi2mkcd[compress]"`), which installs `soundfile`.
+`--quality Q` (0-1, default 0.5) trades size for quality in the lossy
+formats; for FLAC it only changes encoding speed against size.
+
+The input is a MIDI file (converted first; `-p` picks the instrument
+parameter file) or a text file holding one `` hex`...` `` song. The file's
+content decides which, not its extension. `--volume` is the game's
+`music.volume()` (0-255, default 128 like Arcade, which plays songs 18 dB below
+full scale), `--no-velocity` plays every note at full velocity (as older Arcade
+versions did), and `--rate` sets the sample rate (default 48000 Hz).
+
+Like the simulator, a converted song plays about 4% fast (its ticks are 20 ms
+apart instead of 20.83 ms). Checked against a recording of the simulator, the
+render matches to within about 0.1 dB in level, tone and timing. The simulator
+itself sometimes starts a short sound a few ms late or cuts it a few ms early,
+and that random timing isn't copied. Loud passages that would clip are clipped
+in the output with a warning. Rendering takes a while on long songs (roughly 300
+sounds per second), so a progress bar is shown on stderr when it's a terminal
+and `tqdm` is installed (it comes with the `audio` extra).
 
 ### Simulator crash risk (WebAudio memory leak)
 
@@ -125,8 +198,7 @@ Features:
 * MIDI ports and channels
 * Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
   track to a drum track and back (will only use the standard drum kit notes)
-* Per note velocity (MakeCode Arcade will ignore this for now, but it is song's
-  output - MakeCode Arcade beta at the time of writing supports it)
+* Per note velocity (stored per chord in the song)
 * Lyric meta messages
 
 ### Defining your own instrument parameter file
@@ -204,6 +276,18 @@ together. Use commas to separate what you want (e.g. `1,2,4-6` -> [1, 2, 4, 5,
 uv run midi2mkcd tune sample "basic_test.mid" --melodics 3-6 -p "my_params.yaml" --allow-incomplete --copy
 ```
 
+To listen without pasting into Arcade, give either command `--audio OUT`
+(or its older name `--wav`) instead of `-o`/`--copy`/`-f`: it renders the
+result the way `render` does, in the format of OUT's extension (see
+[Listening without Arcade](#listening-without-arcade); needs the `audio`
+extra, and `compress` for formats other than WAV). `tune sample --audio` plays
+the songs one after another, 1 s apart, and logs when each instrument starts
+(e.g. `0:04 program 4 (Electric Piano 1)`).
+
+```commandline
+uv run midi2mkcd tune sample "basic_test.mid" --melodics 3-6 -p "my_params.yaml" --allow-incomplete --audio "sample.wav"
+```
+
 #### Defining drum notes
 
 This tool only supports the standard drum kit, so define notes 27 through 87.
@@ -217,6 +301,44 @@ plays the song once per drum note in a range. (`tune replace` accepts
 uv run midi2mkcd tune replace "basic_test_3.mid" --drums 38 -p "my_params.yaml" --allow-incomplete --copy
 uv run midi2mkcd tune sample "basic_test_3.mid" --drums 35-40 -p "my_params.yaml" --allow-incomplete --copy
 ```
+
+#### Hearing the instruments in a MIDI editor
+
+`params soundfont` renders every instrument in a params file the way the
+simulator plays it and writes an SF2 SoundFont, so you can hear roughly what
+Arcade will play while you write the song in a MIDI editor. Melodic programs
+are bank 0 presets 0-127 and the drum kit is bank 128 preset 0. Samples are as
+loud as Arcade at velocity 127 and the default `music.volume()` (`--volume` to
+change), and loudness follows velocity linearly, as in the simulator. Needs the
+`audio` extra.
+
+```commandline
+uv run midi2mkcd params soundfont -p "my_params.yaml" -o "arcade.sf2"
+uv run midi2mkcd params soundfont -o "arcade_small.sf2" --step 3
+uv run midi2mkcd params soundfont -o "arcade_small.sf3" --step 3
+```
+
+Rendering every note of the bundled params gives a ~350 MB file at the default
+22050 Hz (about 15 s to build); `--step N` renders every Nth note and
+pitch-shifts the others, and `--notes` limits the range (the default, MIDI
+23-119, is the simulator's frequency table). With `--step 3` the SF2 is
+~150 MB.
+
+An output ending in `.sf3` writes an SF3 instead: the same SoundFont with each
+sample compressed as Ogg Vorbis (`--quality`, 0-1, default 0.5). With
+`--step 3` it is ~32 MB, and `--step 12` (~8.5 MB) still sounds good. Every sample carries a few KB of Vorbis headers, so
+short samples shrink less than long ones. FluidSynth, MuseScore, Polyphone and
+SpessaSynth read SF3, but not every player does. It needs the `compress`
+extra.
+
+The SoundFont is a preview, not an exact copy:
+
+* Held notes loop a slice of the sustain, crossfaded at the loop end.
+* The SF2 release only approximates Arcade's (which is linear in amplitude).
+* With one velocity layer, pitch compensation is applied without Arcade's clamp
+  at velocity 127, so loud low notes can be louder than in Arcade.
+  `--velocity-layers N` renders exact levels at N times the size.
+* Synths differ in how they apply SoundFont velocity curves and releases.
 
 ### Use as a library
 
@@ -239,14 +361,28 @@ for warning in result.warnings:  # e.g. the simulator crash-risk warning
 Errors from bad input are subclasses of `midi2mkcd.Midi2MkcdError`:
 `InvalidMidiError` (the MIDI could not be parsed), `InstrumentParamsError` (bad
 YAML, invalid entries, or an instrument the song uses has no entry) and
-`SongConstraintError` (the song can't fit Arcade's song format). The library
-only logs through the standard `logging` module (the `midi2mkcd` logger) and
-never prints. The tuning tools are in `midi2mkcd.tuning`.
+`SongConstraintError` (the song can't fit Arcade's song format),
+`InvalidSongError` (Arcade song text that can't be read back) and
+`MissingDependencyError` (an optional dependency such as numpy isn't
+installed). The library only logs through the standard `logging` module (the
+`midi2mkcd` logger) and never prints. The tuning tools are in
+`midi2mkcd.tuning`, `midi2mkcd.song_to_midi.song_to_midi(text, params=None)`
+returns recovered MIDI file bytes, and `midi2mkcd.audio` renders audio:
+`render_song(result.song)` gives float32 samples (numpy; pass
+`progress=callback` to get `callback(done, total)` per sound) and
+`to_wav_bytes(samples)` a WAV file, or `to_audio_bytes(samples, rate, fmt,
+quality=None)` any of `"wav"`, `"flac"`, `"ogg"`, `"opus"`, `"mp3"`
+(`audio_format_for(path)` picks one from an extension). To render several songs one after
+another, `songs_events(songs)` lays them out 1 s apart for `synthesize`
+(`tuning.melodic_samples` / `drum_samples` give `tune sample`'s songs).
+`midi2mkcd.soundfont.build_soundfont(params, SoundFontOptions(...))` returns SF2
+file bytes (SF3 with `SoundFontOptions(sf3=True)`).
 
 ### Help text
 
 ```commandline
-usage: midi2mkcd [-h] [--version] {convert,tune,params} ...
+usage: midi2mkcd [-h] [--version]
+                 {convert,recover-midi,render,tune,params} ...
 
 Convert a MIDI file to a MakeCode Arcade song.
 
@@ -255,11 +391,14 @@ options:
   --version             show program's version number and exit
 
 commands:
-  {convert,tune,params}
+  {convert,recover-midi,render,tune,params}
     convert             Convert a MIDI file to Arcade code.
+    recover-midi        Recover a MIDI file from a converted song (lossy).
+    render              Render a MIDI file or converted song to audio, as the
+                        simulator plays it.
     tune                Tools for auditioning instrument parameters against a
                         song.
-    params              Print or check instrument parameter files.
+    params              Print, check or export instrument parameter files.
 
 Run 'midi2mkcd COMMAND -h' for a command's options.
 ```
@@ -292,6 +431,76 @@ options:
 ```
 
 ```commandline
+usage: midi2mkcd recover-midi [-h] [-p PARAMS] -o OUT [-v] INPUT
+
+Turn a converted song back into a MIDI file, for when the original
+is lost. Lossy: timing is quantized, note lengths include the gate
+fix, and velocities are approximate.
+
+INPUT is convert's output in any format. A code_extra file gives the
+exact programs, drum notes and lyrics; otherwise programs and drums
+are found by matching each track's instrument against PARAMS, and
+lyrics are lost.
+
+positional arguments:
+  INPUT                Text file with one hex`...` song (convert's output).
+
+options:
+  -h, --help           show this help message and exit
+  -p, --params PARAMS  The instrument parameter YAML the song was converted
+                       with, to match instruments and undo pitch compensation.
+                       Default: the bundled parameters.
+  -o, --output OUT     MIDI file to write (overwritten if it exists).
+                       Required: binary output never goes to stdout.
+  -v, --verbose        Show debug logging on stderr, and tracebacks for
+                       errors.
+```
+
+```commandline
+usage: midi2mkcd render [-h] [-p PARAMS] [--rate HZ] [--volume 0-255]
+                        [--no-velocity] [--quality 0-1] -o OUT [-v]
+                        INPUT
+
+Synthesize a song the way the MakeCode Arcade simulator plays it
+(Chrome's Web Audio) and write a mono audio file. Needs numpy:
+pip install "midi2mkcd[audio]".
+
+The format comes from OUT's extension: .wav (16-bit PCM) or, with
+soundfile (pip install "midi2mkcd[compress]"), .flac (lossless),
+.ogg (Vorbis), .opus (only at 8, 12, 16, 24 or 48 kHz) or .mp3
+(8 to 48 kHz).
+
+INPUT is a MIDI file (converted first, with PARAMS) or a text file
+with one hex`...` song (convert's output in any format). The type
+is decided by the file's content, not its extension.
+
+Like the simulator, ticks are 20 ms apart, so converted songs play
+4% fast.
+
+positional arguments:
+  INPUT                MIDI file, or text file with one hex`...` song.
+
+options:
+  -h, --help           show this help message and exit
+  -p, --params PARAMS  Instrument parameter YAML file for MIDI input. Default:
+                       the bundled parameters. Not allowed for song text
+                       input, whose instruments are in the song.
+  --rate HZ            Sample rate. Default: 48000.
+  --volume 0-255       music.volume() in the game. Default: 128, Arcade's
+                       default.
+  --no-velocity        Play every note at full velocity, as Arcade versions
+                       that ignore the velocity section do.
+  --quality 0-1        Compression quality for Ogg, Opus and MP3: higher is
+                       better and bigger. Default: 0.5. For FLAC it only
+                       trades encoding speed against size; ignored for WAV.
+  -o, --output OUT     Audio file to write: .wav, .flac, .ogg, .opus or .mp3
+                       (overwritten if it exists). Required: binary output
+                       never goes to stdout.
+  -v, --verbose        Show debug logging on stderr, and tracebacks for
+                       errors.
+```
+
+```commandline
 usage: midi2mkcd tune [-h] {replace,sample,report} ...
 
 Tools for auditioning instrument parameters against a song.
@@ -308,17 +517,64 @@ commands:
 ```
 
 ```commandline
-usage: midi2mkcd params [-h] {show,check} ...
+usage: midi2mkcd params [-h] {show,check,soundfont} ...
 
-Print or check instrument parameter files.
+Print, check or export instrument parameter files.
 
 options:
-  -h, --help    show this help message and exit
+  -h, --help            show this help message and exit
 
 commands:
-  {show,check}
-    show        Print the bundled instrument parameters (or a blank template).
-    check       Lint an instrument parameter file.
+  {show,check,soundfont}
+    show                Print the bundled instrument parameters (or a blank
+                        template).
+    check               Lint an instrument parameter file.
+    soundfont           Export the instruments as an SF2 or SF3 SoundFont, for
+                        a MIDI editor.
 ```
 
-Each `tune` and `params` subcommand has its own `-h` too.
+```commandline
+usage: midi2mkcd params soundfont [-h] [-p PARAMS] [--notes RANGE] [--step N]
+                                  [--rate HZ] [--velocity-layers N]
+                                  [--volume 0-255] [--allow-incomplete]
+                                  [--quality 0-1] -o OUT [-v]
+
+Render every instrument in PARAMS the way the simulator plays it
+and write an SF2 SoundFont: General MIDI programs in bank 0 and
+the drum kit in bank 128, as loud as Arcade at the given volume.
+Needs numpy: pip install "midi2mkcd[audio]".
+
+Melodic samples loop their sustain, and the SF2 release only
+approximates Arcade's. Rendering every note gives a large file
+(hundreds of MB): use --step to render fewer notes, or write an
+SF3 (OUT ending in .sf3: samples compressed with Ogg Vorbis, read
+by FluidSynth, MuseScore, Polyphone and SpessaSynth; needs
+soundfile: pip install "midi2mkcd[compress]").
+
+options:
+  -h, --help           show this help message and exit
+  -p, --params PARAMS  Instrument parameter YAML file. Default: the bundled
+                       parameters.
+  --notes RANGE        MIDI notes to map, e.g. "36-96". Default: 23-119, the
+                       simulator's frequency table (others play with no
+                       pitch).
+  --step N             Render every Nth note and pitch-shift the others from
+                       it. Default: 1 (every note).
+  --rate HZ            Sample rate. Default: 22050.
+  --velocity-layers N  Render N velocity layers per note, for Arcade's exact
+                       loudness with pitch compensation, at N times the size.
+                       Default: 1.
+  --volume 0-255       music.volume() to match. Default: 128, Arcade's
+                       default.
+  --allow-incomplete   Skip incomplete or invalid entries in the params file
+                       instead of failing.
+  --quality 0-1        Compression quality for SF3 samples: higher is better
+                       and bigger. Default: 0.5. Ignored for SF2.
+  -o, --output OUT     SoundFont to write: SF3 if it ends in .sf3, else SF2
+                       (overwritten if it exists). Required: binary output
+                       never goes to stdout.
+  -v, --verbose        Show debug logging on stderr, and tracebacks for
+                       errors.
+```
+
+Each other `tune` and `params` subcommand has its own `-h` too.
