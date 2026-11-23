@@ -35,8 +35,8 @@ conversion algorithm or the existing golden outputs.
 | Synthesizer Stage 2 + `render` (section 4) | **Done** (2026-11-23, branch `render-features`) | numpy `audio` extra, `synthesize` / `render_song` / `to_wav_bytes`, `midi2mkcd render` (tqdm progress bar, speed log line), tests, README/CLAUDE.md. Speeding it up is deferred. Checked against calibration recording 3 with `testing/calibration/analysis/compare.py`: matches to ~0.1 dB. See "Stage 2 status" in section 4. |
 | `tune replace/sample --wav`     | **Done** (2026-11-23, branch `render-features`) | `audio.songs_events` (songs 1 s apart, Stage 1), `tuning.melodic_samples` / `drum_samples` (the sampler's `ConversionResult`s), `cli._write_wav` shared with `render`. The `--wav` vs `-o`/`--copy`/`-f` check is in `main` (exit 2), not an argparse group, since `-o` and `--copy` go together. `tune sample --wav` logs e.g. `0:04 program 41 (Viola)`. No `--rate`/`--volume`/`--no-velocity` on `tune`: use `render` on the text output for those. |
 | `params soundfont` (section 5)  | **Done** (2026-11-23, branch `render-features`) | `soundfont.py` (`build_soundfont`, `estimate_size`, `write_sf2`), `midi2mkcd params soundfont`, `tests/unit/test_soundfont.py` with an independent reader (`tests/helpers.py::read_sf2`). Bundled params at `--step 1`: 12,477 samples, 354 MB, ~13 s. Heard by the user in SpessaSynth at `--step 3` (146 MB, estimate 158 MB): "sounds great and almost identical" to Arcade. See "Status" at the top of section 5. |
-| Compressed output (section 9)   | **Next** | Optional `compress` extra (`soundfile`). Designed 2026-11-23; nothing written yet. |
-| `params fit` (section 6)        | Not started (after section 9) | |
+| Compressed output (section 9)   | **Done** (2026-11-23, branch `render-features`) | `compress` extra (soundfile 0.14.0, libsndfile 1.2.2). `audio.to_audio_bytes` / `audio_format_for` / `check_audio_format`; `render -o x.{flac,ogg,opus,mp3}` with `--quality`; `tune --audio` (`--wav` kept as an alias); `params soundfont -o x.sf3`. Bundled params at `--step 3`: 31.8 MB SF3 vs 146 MB SF2. Heard by the user in SpessaSynth: "sounds great" even at `--step 12` (~8.5 MB SF3). See "Status" at the top of section 9. |
+| `params fit` (section 6)        | **Next** | |
 | Two-layer instruments           | Deferred (last) | |
 
 Facts marked **(verified)** were read from the upstream source at the commits
@@ -1469,6 +1469,55 @@ working).
 ---
 
 ## 9. Compressed output (`compress` extra): FLAC/Ogg/Opus/MP3 and SF3
+
+### Status (2026-11-23): done, SF3 heard in SpessaSynth
+
+Decisions and verified facts (the design below is kept as written; where it
+differs, this wins):
+
+- **Dependency:** `compress = ["numpy>=2.5.5", "soundfile>=0.14.0"]` (soundfile
+  itself requires numpy, unpinned). soundfile 0.14.0 installed with `uv add`
+  on Windows / Python 3.14 (libsndfile 1.2.2, which has FLAC, OGG with VORBIS
+  and OPUS, and MP3). mypy ignores
+  `soundfile.*` (no stubs).
+- **Quality:** `quality` 0-1, default `audio.DEFAULT_QUALITY = 0.5` for the
+  lossy formats; soundfile's `compression_level = 1 - quality` (checked: 0 is
+  the biggest/best for Vorbis, Opus and MP3). libsndfile 1.2.2 **refuses
+  compression level 1.0 for MP3**, so it is capped at 0.99. Opus at quality 0
+  sounds bad (correlation 0.55 on a test tone): the user's choice. FLAC: no
+  level unless `quality` is given. `bitrate_mode` isn't used (Opus refuses
+  every mode). WAV ignores `--quality` with a DEBUG line (not rejected).
+- **Rates:** Opus 8/12/16/24/48 kHz; MP3 the nine MPEG rates 8-48 kHz (96 kHz
+  fails). Both checked in `check_audio_format` before rendering (usage error,
+  exit 2). Vorbis took every rate tried (8-192 kHz).
+- **Lengths:** Vorbis, Opus and MP3 all decoded to exactly the input length
+  in soundfile (no padding), so SF3 loop points stay valid.
+- **FLAC** is fed the same int16 points as the WAV, so it decodes identically.
+- **Flag:** `tune replace/sample --audio OUT` with `--wav` as an alias (one
+  argparse argument, `dest="audio"`). No `--quality` on `tune` (as with
+  `--rate`: use `render` on the text output).
+- **SF3** (checked against FluidSynth `fluid_sffile.c` / `fluid_defsfont.c`
+  and spessasynth_core `read/samples.ts`, `write/shdr.ts`, `write/sdta.ts`,
+  `write/write.ts`): ifil 3.0 (SpessaSynth writes 3.0; FluidSynth accepts
+  major 3 only when built with libsndfile and ignores the minor); shdr
+  start/end are byte offsets in smpl, **end exclusive** (FluidSynth's reader
+  converts to inclusive itself); loops are decoded points relative to the
+  sample, used as-is; type `1 | 0x10`; odd-length streams get one zero byte,
+  no 46-point guard. The Ogg header's rate is ignored by FluidSynth (shdr's
+  is used). FluidSynth rejects non-mono streams.
+- **SF3 size:** bundled params at `--step 3` (4,285 samples): **31.8 MB**
+  vs 146 MB SF2 (4.6x, not the hoped-for 10x). Each Ogg stream carries ~3.7 KB
+  of Vorbis setup headers (codebooks), ~16 MB of the 31.8. SF3 can't share
+  them between samples. `estimate_size` is still the SF2 bound; the INFO line
+  says so, and the actual SF3 size is logged after writing.
+- **Render sizes** (fixture, 48 kHz): WAV 357 KB, FLAC 173 KB, Ogg 44 KB,
+  Opus 63 KB, MP3 61 KB.
+
+- **By ear:** the user loaded the SF3 in SpessaSynth and it "sounds great",
+  even at `--step 12` (bundled params, ~8.5 MB). No loop clicks reported.
+  A small SF3 at a large step is a practical default for sharing.
+- **Not yet seen:** `soundfile` installing on the Ubuntu and macOS CI runners
+  (first push of this change).
 
 Uncompressed output is large: a 3-minute `render` at 48 kHz is ~17 MB of
 WAV, and `params soundfont --step 3` with the bundled params is ~150 MB

@@ -192,6 +192,16 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["tune", "replace", INPUT, "--melodics", "5", "--wav", "x.wav", "-f", "hex"],
         ["tune", "sample", INPUT, "--melodics", "0", "--wav", "x.wav", "-o", "x"],
         ["tune", "sample", INPUT, "--melodics", "0", "--wav", "x.wav", "--copy"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--audio", "x.wav", "--copy"],
+        ["render", INPUT, "-o", "x.aiff"],
+        ["render", INPUT, "-o", "x"],
+        ["render", INPUT, "-o", "x.wav", "--quality", "1.5"],
+        ["render", INPUT, "-o", "x.wav", "--quality", "x"],
+        ["render", INPUT, "-o", "x.opus", "--rate", "22050"],
+        ["render", INPUT, "-o", "x.mp3", "--rate", "96000"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--audio", "x.aiff"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--audio", "x.aiff"],
+        ["params", "soundfont", "-o", "x.sf3", "--quality", "-0.1"],
     ],
     ids=lambda argv: " ".join(Path(a).name for a in argv) or "bare",
 )
@@ -207,14 +217,15 @@ def test_replace_error_names_the_options(capsys: pytest.CaptureFixture[str]) -> 
     assert "give --melodics, --drums or both" in capsys.readouterr().err
 
 
-def test_wav_error_names_the_clashing_options(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("flag", ["--audio", "--wav"])
+def test_audio_error_names_the_clashing_options(
+    flag: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     wav = tmp_path / "x.wav"
-    argv = ["tune", "replace", INPUT, "--drums", "36", "--wav", str(wav)]
+    argv = ["tune", "replace", INPUT, "--drums", "36", flag, str(wav)]
     assert run([*argv, "-o", "x", "--copy", "-f", "code"]) == 2
     assert (
-        "--wav can't be used with -o/--output, --copy, -f/--format"
+        "--audio can't be used with -o/--output, --copy, -f/--format"
         in capsys.readouterr().err
     )
     assert not wav.exists()
@@ -459,3 +470,70 @@ def test_params_soundfont_with_incomplete_params(tmp_path: Path) -> None:
         ("Clavinet", 7, 0)
     ]
     assert b"partial.yaml" in sf.info["ICMT"]
+
+
+def test_render_flac_and_ogg(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    sf = pytest.importorskip("soundfile")
+    wav = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(wav), "--rate", "8000"]) == 0
+    _, _, frames = _wav_frames(wav)
+    flac = tmp_path / "OUT.FLAC"  # extensions are case-insensitive
+    assert run(["render", INPUT, "-o", str(flac), "--rate", "8000"]) == 0
+    decoded, rate = sf.read(str(flac), dtype="int16")
+    assert rate == 8000
+    assert decoded.astype("<i2").tobytes() == frames
+    ogg = tmp_path / "out.ogg"
+    assert (
+        run(["render", INPUT, "-o", str(ogg), "--rate", "8000", "--quality", "1"]) == 0
+    )
+    decoded, rate = sf.read(str(ogg), dtype="int16")
+    assert (rate, 2 * len(decoded)) == (8000, len(frames))
+    assert ogg.stat().st_size < flac.stat().st_size
+
+
+def test_tune_replace_audio_ogg(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    sf = pytest.importorskip("soundfile")
+    wav = tmp_path / "out.wav"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "--audio", str(wav)]) == 0
+    ogg = tmp_path / "out.ogg"
+    assert run(["tune", "replace", INPUT, "--melodics", "5", "--wav", str(ogg)]) == 0
+    decoded, rate = sf.read(str(ogg))
+    assert (rate, 2 * len(decoded)) == (48000, len(_wav_frames(wav)[2]))
+
+
+def test_compressed_output_without_soundfile_is_a_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    monkeypatch.setitem(sys.modules, "soundfile", None)
+    message = 'needs soundfile: pip install "midi2mkcd[compress]"'
+    assert run(["render", INPUT, "-o", str(tmp_path / "out.flac")]) == 1
+    assert message in capsys.readouterr().err
+    sf3 = ["params", "soundfont", "-o", str(tmp_path / "x.sf3"), "--notes", "60"]
+    assert run(sf3) == 1
+    assert message in capsys.readouterr().err
+    assert not list(tmp_path.iterdir())
+    # The uncompressed formats still work
+    assert (
+        run(["render", INPUT, "-o", str(tmp_path / "out.wav"), "--rate", "8000"]) == 0
+    )
+    sf2 = ["params", "soundfont", "-o", str(tmp_path / "x.sf2"), "--notes", "60"]
+    assert run([*sf2, "--rate", "8000"]) == 0
+
+
+def test_params_soundfont_writes_an_sf3(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("soundfile")
+    argv = ["params", "soundfont", "--notes", "60-61", "--step", "2", "--rate", "8000"]
+    sf2_path, sf3_path = tmp_path / "arcade.sf2", tmp_path / "arcade.sf3"
+    assert run([*argv, "-o", str(sf2_path)]) == 0
+    assert run([*argv, "-o", str(sf3_path), "--quality", "0.8"]) == 0
+    assert "SF3 size:" in capsys.readouterr().err
+    sf2, sf3 = read_sf2(sf2_path.read_bytes()), read_sf2(sf3_path.read_bytes())
+    assert sf3.info["ifil"] == b"\x03\x00\x00\x00"
+    assert sf3.presets == sf2.presets and sf3.instruments == sf2.instruments
+    assert all(h.sample_type == 0x11 for h in sf3.samples)
+    assert len(sf3_path.read_bytes()) < len(sf2_path.read_bytes())

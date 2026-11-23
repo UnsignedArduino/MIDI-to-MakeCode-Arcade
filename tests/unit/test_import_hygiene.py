@@ -17,13 +17,17 @@ assert [type(h) for h in handlers] == [logging.NullHandler], handlers
 
 
 # Stage 1 of audio.py must work without the `audio` extra: numpy (and the
-# fit extra's scipy/cma) are only imported inside the functions that need them.
+# fit extra's scipy/cma, and the compress extra's soundfile) are only imported
+# inside the functions that need them.
 AUDIO_CHECK = """
 import sys
 
+import midi2mkcd
 import midi2mkcd.audio
+import midi2mkcd.cli
+import midi2mkcd.soundfont
 
-for name in ("numpy", "scipy", "cma", "tqdm"):
+for name in ("numpy", "scipy", "cma", "tqdm", "soundfile"):
     assert name not in sys.modules, f"{name} was imported"
 """
 

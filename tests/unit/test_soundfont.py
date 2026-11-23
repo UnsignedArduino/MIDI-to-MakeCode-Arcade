@@ -429,3 +429,83 @@ def test_without_numpy_is_a_clean_error(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setitem(sys.modules, "numpy", None)
     with pytest.raises(MissingDependencyError):
         build_soundfont(mapping({0: instrument()}), SoundFontOptions(notes=[60]))
+
+
+# --- SF3 --------------------------------------------------------------------
+
+
+def _ogg(points: int) -> bytes:
+    sf = pytest.importorskip("soundfile")
+    import io
+
+    buf = io.BytesIO()
+    t = np.arange(points) / 8000
+    sf.write(buf, 0.5 * np.sin(2 * np.pi * 440 * t), 8000, format="OGG")
+    return buf.getvalue()
+
+
+def test_write_sf3_round_trips() -> None:
+    first, second = _ogg(1000), _ogg(500)
+    samples = [
+        Sf2Sample("looped", first, 8000, 60, loop=(100, 900), vorbis_frames=1000),
+        Sf2Sample("one-shot", second, 8000, 36, vorbis_frames=500),
+    ]
+    zones = (soundfont.Sf2Zone(0, (0, 127), 60), soundfont.Sf2Zone(1, (36, 36), 36))
+    sf = read_sf2(
+        write_sf2(
+            "x", samples, [Sf2Instrument("Both", zones)], [Sf2Preset("Both", 0, 0, 0)]
+        )
+    )
+    assert sf.info["ifil"] == b"\x03\x00\x00\x00"
+    looped, one_shot = sf.samples
+    # Byte offsets of each Ogg stream, end exclusive, no zero guard points
+    assert (looped.start, looped.end) == (0, len(first))
+    assert one_shot.start == len(first) + len(first) % 2
+    assert sf.smpl[one_shot.start : one_shot.end] == second
+    assert len(sf.smpl) == one_shot.end + len(second) % 2
+    # Loops relative to the sample; a one-shot's covers the whole sample
+    assert (looped.loop_start, looped.loop_end) == (100, 900)
+    assert (one_shot.loop_start, one_shot.loop_end) == (0, 500)
+    assert looped.sample_type == one_shot.sample_type == 0x11
+    assert [len(sf.points(h)) for h in sf.samples] == [1000, 500]
+    assert [z.gen(SAMPLE_MODES) for z in sf.instruments[0][1]] == [1, 0]
+
+
+def test_sf3_decodes_close_to_the_sf2() -> None:
+    pytest.importorskip("soundfile")
+    params = mapping(
+        {0: instrument(envelope=Envelope(10, 100, 512, 100, 1024)), 1: instrument()},
+        {36: KICK},
+    )
+    sf2 = build(params, notes=[48, 60])
+    sf3 = build(params, notes=[48, 60], sf3=True, quality=0.8)
+    assert sf3.presets == sf2.presets and sf3.instruments == sf2.instruments
+    for pcm, ogg in zip(sf2.samples, sf3.samples, strict=True):
+        assert (ogg.name, ogg.rate, ogg.original_pitch) == (
+            pcm.name,
+            pcm.rate,
+            pcm.original_pitch,
+        )
+        assert ogg.sample_type == 0x11 and pcm.sample_type == 1
+        assert sf3.loop(ogg) == sf2.loop(pcm)
+        expected, decoded = floats(sf2, pcm), floats(sf3, ogg)
+        assert len(decoded) == len(expected)
+        assert np.corrcoef(expected, decoded)[0, 1] > 0.999
+        assert float(np.abs(decoded - expected).max()) < 0.01
+    # Not much smaller: each short Ogg stream carries ~3.7 KB of Vorbis headers
+    assert len(sf3.smpl) < len(sf2.smpl)
+
+
+def test_sf3_without_soundfile_is_a_clean_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "soundfile", None)
+    with pytest.raises(MissingDependencyError, match=r"midi2mkcd\[compress\]"):
+        build_soundfont(mapping({0: instrument()}), SoundFontOptions(sf3=True))
+    # SF2 doesn't need it
+    build_soundfont(mapping({0: instrument()}), SoundFontOptions(notes=[60], rate=8000))
+
+
+def test_quality_must_be_0_to_1() -> None:
+    with pytest.raises(ValueError, match="quality"):
+        SoundFontOptions(quality=1.5).check()

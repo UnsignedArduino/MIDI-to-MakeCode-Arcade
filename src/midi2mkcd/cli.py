@@ -48,6 +48,12 @@ COPY_HELP = (
     'pip install "midi2mkcd[optional]").'
 )
 COPY_INSTALL_ERROR = '--copy needs pyperclip: pip install "midi2mkcd[optional]"'
+AUDIO_FORMATS_HELP = (
+    "The format comes from OUT's extension: .wav (16-bit PCM) or, with\n"
+    'soundfile (pip install "midi2mkcd[compress]"), .flac (lossless),\n'
+    ".ogg (Vorbis), .opus (only at 8, 12, 16, 24 or 48 kHz) or .mp3\n"
+    "(8 to 48 kHz)."
+)
 
 
 def range_arg(value: str) -> list[int]:
@@ -75,6 +81,16 @@ def _volume_arg(value: str) -> int:
         raise ArgumentTypeError(f"not an integer: {value!r}") from None
     if not 0 <= number <= 255:
         raise ArgumentTypeError(f"must be 0-255: {number}")
+    return number
+
+
+def _quality_arg(value: str) -> float:
+    try:
+        number = float(value)
+    except ValueError:
+        raise ArgumentTypeError(f"not a number: {value!r}") from None
+    if not 0.0 <= number <= 1.0:
+        raise ArgumentTypeError(f"must be 0-1: {number}")
     return number
 
 
@@ -123,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.handler is _run_tune_replace and args.melodics is args.drums is None:
         args.parser.error("give --melodics, --drums or both")
-    if getattr(args, "wav", None) is not None:
+    if getattr(args, "audio", None) is not None:
         # Not an argparse mutually exclusive group: -o and --copy go together
         clashes = [
             flag
@@ -135,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
             if given
         ]
         if clashes:
-            args.parser.error(f"--wav can't be used with {', '.join(clashes)}")
+            args.parser.error(f"--audio can't be used with {', '.join(clashes)}")
     configure_logging(logging.DEBUG if args.verbose else logging.INFO)
     logger.debug(f"Received arguments: {args}")
     try:
@@ -185,10 +201,12 @@ def build_parser() -> ArgumentParser:
     _add_binary_output(p, "MIDI file to write")
 
     p = _leaf(commands, "render", _run_render,
-              "Render a MIDI file or converted song to WAV, as the simulator plays it.",
+              "Render a MIDI file or converted song to audio, as the simulator "
+              "plays it.",
               "Synthesize a song the way the MakeCode Arcade simulator plays it\n"
-              "(Chrome's Web Audio) and write a mono 16-bit WAV file. Needs numpy:\n"
+              "(Chrome's Web Audio) and write a mono audio file. Needs numpy:\n"
               'pip install "midi2mkcd[audio]".\n\n'
+              f"{AUDIO_FORMATS_HELP}\n\n"
               "INPUT is a MIDI file (converted first, with PARAMS) or a text file\n"
               "with one hex`...` song (convert's output in any format). The type\n"
               "is decided by the file's content, not its extension.\n\n"
@@ -209,7 +227,9 @@ def build_parser() -> ArgumentParser:
     p.add_argument("--no-velocity", action="store_true",
                    help="Play every note at full velocity, as Arcade versions "
                    "that ignore the velocity section do.")  # fmt: skip
-    _add_binary_output(p, "WAV file to write")
+    _add_quality(p, "Ogg, Opus and MP3", "For FLAC it only trades encoding "
+                 "speed against size; ignored for WAV.")  # fmt: skip
+    _add_binary_output(p, "Audio file to write: .wav, .flac, .ogg, .opus or .mp3")
 
     tune = _group(commands, "tune", "Tools for auditioning instrument parameters "
                   "against a song.")  # fmt: skip
@@ -224,7 +244,7 @@ def build_parser() -> ArgumentParser:
     p.add_argument("--drums", type=int, metavar="N",
                    help="Play every drum note as MIDI drum note N.")  # fmt: skip
     _add_format(p, "code", track_given=True)
-    _add_wav(p, "the replaced song")
+    _add_audio(p, "the replaced song")
     _add_tune_common(p)
 
     p = _leaf(tune, "sample", _run_tune_sample,
@@ -232,15 +252,15 @@ def build_parser() -> ArgumentParser:
               "Output one Arcade program that plays INPUT once per instrument in\n"
               "RANGE, each time with every melodic note (or every drum note)\n"
               "replaced by that instrument.\n\n"
-              "With --wav, render the songs one after another to a WAV file\n"
-              "instead, 1 s apart, and log when each instrument starts.")  # fmt: skip
+              "With --audio, render the songs one after another to an audio\n"
+              "file instead, 1 s apart, and log when each instrument starts.")  # fmt: skip
     _add_input(p, "MIDI file to tune against.")
     which = p.add_mutually_exclusive_group(required=True)
     which.add_argument("--melodics", type=range_arg, metavar="RANGE",
                        help='MIDI programs to sample, e.g. "0,2,4-10".')  # fmt: skip
     which.add_argument("--drums", type=range_arg, metavar="RANGE",
                        help='MIDI drum notes to sample, e.g. "35-40".')  # fmt: skip
-    _add_wav(p, "the songs, one after another,")
+    _add_audio(p, "the songs, one after another,")
     _add_tune_common(p)
 
     p = _leaf(tune, "report", _run_tune_report,
@@ -272,14 +292,17 @@ def build_parser() -> ArgumentParser:
     _add_verbose(p)
 
     p = _leaf(params, "soundfont", _run_params_soundfont,
-              "Export the instruments as an SF2 SoundFont, for a MIDI editor.",
+              "Export the instruments as an SF2 or SF3 SoundFont, for a MIDI editor.",
               "Render every instrument in PARAMS the way the simulator plays it\n"
               "and write an SF2 SoundFont: General MIDI programs in bank 0 and\n"
               "the drum kit in bank 128, as loud as Arcade at the given volume.\n"
               "Needs numpy: pip install \"midi2mkcd[audio]\".\n\n"
               "Melodic samples loop their sustain, and the SF2 release only\n"
               "approximates Arcade's. Rendering every note gives a large file\n"
-              "(hundreds of MB): use --step to render fewer notes.")  # fmt: skip
+              "(hundreds of MB): use --step to render fewer notes, or write an\n"
+              "SF3 (OUT ending in .sf3: samples compressed with Ogg Vorbis, read\n"
+              "by FluidSynth, MuseScore, Polyphone and SpessaSynth; needs\n"
+              "soundfile: pip install \"midi2mkcd[compress]\").")  # fmt: skip
     p.add_argument("-p", "--params", type=Path, metavar="PARAMS",
                    help="Instrument parameter YAML file. Default: the bundled "
                    "parameters.")  # fmt: skip
@@ -305,7 +328,8 @@ def build_parser() -> ArgumentParser:
     p.add_argument("--allow-incomplete", action="store_true",
                    help="Skip incomplete or invalid entries in the params file "
                    "instead of failing.")  # fmt: skip
-    _add_binary_output(p, "SF2 file to write")
+    _add_quality(p, "SF3 samples", "Ignored for SF2.")
+    _add_binary_output(p, "SoundFont to write: SF3 if it ends in .sf3, else SF2")
     return parser
 
 
@@ -342,12 +366,19 @@ def _add_format(p: ArgumentParser, default: str, *, track_given: bool = False) -
                    help=f"{FORMAT_HELP}\nDefault: {default}.")  # fmt: skip
 
 
-def _add_wav(p: ArgumentParser, what: str) -> None:
-    p.add_argument("--wav", type=Path, metavar="OUT.wav",
-                   help=f"Render {what} to this WAV file as the simulator plays "
-                   "it (like 'midi2mkcd render') instead of writing code. Not with "
-                   '-o, --copy or -f. Needs numpy: pip install "midi2mkcd[audio]".'
-                   )  # fmt: skip
+def _add_audio(p: ArgumentParser, what: str) -> None:
+    p.add_argument("--audio", "--wav", dest="audio", type=Path, metavar="OUT",
+                   help=f"Render {what} to this audio file as the simulator plays "
+                   "it (like 'midi2mkcd render', at its default quality) instead "
+                   "of writing code. The format comes from the extension: .wav, "
+                   ".flac, .ogg, .opus or .mp3. Not with -o, --copy or -f. Needs "
+                   'numpy: pip install "midi2mkcd[audio]".')  # fmt: skip
+
+
+def _add_quality(p: ArgumentParser, which: str, note: str) -> None:
+    p.add_argument("--quality", type=_quality_arg, metavar="0-1",
+                   help=f"Compression quality for {which}: higher is better and "
+                   f"bigger. Default: {audio.DEFAULT_QUALITY}. {note}")  # fmt: skip
 
 
 def _add_params(p: ArgumentParser) -> None:
@@ -399,25 +430,44 @@ def _run_recover_midi(args: Namespace) -> int:
 
 
 def _run_render(args: Namespace) -> int:
+    fmt = _audio_format(args, args.output, args.rate, args.quality)
     song = _read_render_input(args.input, args.params)
     events = audio.song_events(
         song, use_velocity=not args.no_velocity, global_volume=args.volume
     )
-    return _write_wav(events, args.output, args.rate)
+    return _write_audio(events, args.output, fmt, args.rate, args.quality)
 
 
-def _write_wav(
-    events: list[audio.SongEvent], output: Path, rate: int = audio.DEFAULT_RATE
+def _audio_format(
+    args: Namespace, output: Path, rate: int, quality: float | None = None
+) -> str:
+    """The output's format, checked before any rendering. A bad extension or
+    rate is a usage error (exit 2); a missing soundfile is an error (exit 1)."""
+    try:
+        fmt = audio.audio_format_for(output)
+        audio.check_audio_format(fmt, rate, quality)
+    except ValueError as e:
+        args.parser.error(str(e))
+    return fmt
+
+
+def _write_audio(
+    events: list[audio.SongEvent],
+    output: Path,
+    fmt: str,
+    rate: int = audio.DEFAULT_RATE,
+    quality: float | None = None,
 ) -> int:
     """Synthesize the events with a progress bar and a speed log line, and write
-    them as a WAV file."""
+    them as an audio file in `fmt`."""
     started = time.perf_counter()
     with _ProgressBar("Rendering", "sound") as progress:
         samples = audio.synthesize(events, rate, progress=progress)
     logger.info(
         _render_summary(len(samples) / rate, rate, time.perf_counter() - started)
     )
-    return _emit_bytes(audio.to_wav_bytes(samples, rate), output)
+    data = audio.to_audio_bytes(samples, rate, fmt, quality=quality)
+    return _emit_bytes(data, output)
 
 
 def _render_summary(audio_s: float, rate: int, elapsed_s: float) -> str:
@@ -490,26 +540,30 @@ def _read_render_input(path: Path, params: Path | None) -> Song:
 
 
 def _run_tune_replace(args: Namespace) -> int:
+    fmt = None
+    if args.audio is not None:
+        fmt = _audio_format(args, args.audio, audio.DEFAULT_RATE)
     result = tuning.convert_replaced(
         args.input,
         _read_params(args.params, allow_incomplete=args.allow_incomplete),
         melodics=args.melodics,
         drums=args.drums,
     )
-    if args.wav is not None:
-        return _write_wav(audio.song_events(result.song), args.wav)
+    if fmt is not None:
+        return _write_audio(audio.song_events(result.song), args.audio, fmt)
     return _emit(result.to_typescript(args.format or "code"), args.output, args.copy)
 
 
 def _run_tune_sample(args: Namespace) -> int:
     params = _read_params(args.params, allow_incomplete=args.allow_incomplete)
-    if args.wav is None:
+    if args.audio is None:
         if args.melodics is not None:
             text = tuning.sample_melodics(args.input, args.melodics, params)
         else:
             text = tuning.sample_drums(args.input, args.drums, params)
         return _emit(text, args.output, args.copy)
 
+    fmt = _audio_format(args, args.audio, audio.DEFAULT_RATE)
     if args.melodics is not None:
         samples = tuning.melodic_samples(args.input, args.melodics, params)
     else:
@@ -522,7 +576,7 @@ def _run_tune_sample(args: Namespace) -> int:
             else f"drum note {number} ({drum_note_name(number)})"
         )
         logger.info(f"{_minutes_seconds(start_ms)} {name}")
-    return _write_wav(events, args.wav)
+    return _write_audio(events, args.audio, fmt)
 
 
 def _minutes_seconds(ms: float) -> str:
@@ -559,6 +613,9 @@ def _run_params_check(args: Namespace) -> int:
 
 
 def _run_params_soundfont(args: Namespace) -> int:
+    sf3 = args.output.suffix.lower() == ".sf3"
+    if not sf3 and args.quality is not None:
+        logger.debug("--quality is ignored for SF2")
     params = _read_params(args.params, allow_incomplete=args.allow_incomplete)
     options = soundfont.SoundFontOptions(
         notes=args.notes,
@@ -566,6 +623,8 @@ def _run_params_soundfont(args: Namespace) -> int:
         rate=args.rate,
         velocity_layers=args.velocity_layers,
         volume=args.volume,
+        sf3=sf3,
+        quality=args.quality if sf3 else None,
     )
     source = args.params.name if args.params is not None else "bundled params"
     with _ProgressBar("Rendering", "sample") as progress:

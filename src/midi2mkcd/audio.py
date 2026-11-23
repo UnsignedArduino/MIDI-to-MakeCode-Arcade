@@ -11,6 +11,9 @@ samples the way `pxtsim/sound/playInstructions.ts` does with Web Audio in
 Chrome, and needs numpy (the `audio` extra). numpy is only ever imported inside
 those functions, so this module stays importable without it.
 
+`to_audio_bytes` also writes FLAC, Ogg Vorbis, Opus and MP3 through soundfile
+(the `compress` extra), likewise imported only inside the encoding functions.
+
 Not re-exported from the package root.
 """
 
@@ -24,6 +27,8 @@ import struct
 import wave as wav_file
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
+from os import PathLike
+from pathlib import PurePath
 from typing import TYPE_CHECKING, Any
 
 from midi2mkcd.arcade.music_types import DrumInstrument, Instrument, Song
@@ -51,6 +56,30 @@ DEFAULT_RATE = 48000
 # Silence between songs played one after another (`songs_events`)
 DEFAULT_GAP_MS = 1000.0
 NUMPY_INSTALL_ERROR = 'audio rendering needs numpy: pip install "midi2mkcd[audio]"'
+SOUNDFILE_INSTALL_ERROR = (
+    'compressed audio needs soundfile: pip install "midi2mkcd[compress]"'
+)
+
+# Output formats, named by their file extensions. WAV needs only numpy; the
+# others are encoded by libsndfile through soundfile (the `compress` extra).
+AUDIO_FORMATS = ("wav", "flac", "ogg", "opus", "mp3")
+# 0-1, higher is better and bigger; see `to_audio_bytes`
+DEFAULT_QUALITY = 0.5
+# soundfile (format, subtype) for each compressed format
+_SOUNDFILE_FORMATS = {
+    "flac": ("FLAC", "PCM_16"),
+    "ogg": ("OGG", "VORBIS"),
+    "opus": ("OGG", "OPUS"),
+    "mp3": ("MP3", "MPEG_LAYER_III"),
+}
+_LOSSY_FORMATS = frozenset({"ogg", "opus", "mp3"})
+# Rates the encoders accept (libsndfile 1.2.2 refuses others; no resampling)
+_FORMAT_RATES = {
+    "opus": (8000, 12000, 16000, 24000, 48000),
+    "mp3": (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000),
+}
+# libsndfile 1.2.2 refuses compression level 1.0 for MP3
+_MP3_MAX_COMPRESSION_LEVEL = 0.99
 
 
 def note_instructions(
@@ -226,6 +255,14 @@ def _numpy() -> Any:
     except ImportError:
         raise MissingDependencyError(NUMPY_INSTALL_ERROR) from None
     return numpy
+
+
+def _soundfile() -> Any:
+    try:
+        import soundfile
+    except ImportError:
+        raise MissingDependencyError(SOUNDFILE_INSTALL_ERROR) from None
+    return soundfile
 
 
 def _parse_instructions(buf: bytes) -> list[_Instruction]:
@@ -614,6 +651,12 @@ def to_wav_bytes(samples: NDArray[np.float32], rate: int = DEFAULT_RATE) -> byte
     device would, with a WARNING giving the peak and how many were clipped.
     """
     np_ = _numpy()
+    pcm = _pcm16(np_, _clipped(np_, samples))
+    return _wav_bytes(pcm, rate)
+
+
+def _clipped(np_: Any, samples: Any) -> Any:
+    """The samples as float64, clipped to +-1 with a WARNING if any were past."""
     data = np_.asarray(samples, dtype=np_.float64)
     if len(data):
         peak = float(np_.abs(data).max())
@@ -625,11 +668,119 @@ def to_wav_bytes(samples: NDArray[np.float32], rate: int = DEFAULT_RATE) -> byte
             )
         else:
             logger.debug(f"Peak {peak:.3f}")
-    pcm = np_.round(np_.clip(data, -1.0, 1.0) * _INT16_MAX).astype("<i2")
+    return np_.clip(data, -1.0, 1.0)
+
+
+def _pcm16(np_: Any, data: Any) -> Any:
+    """Samples within +-1 as 16-bit little-endian integers."""
+    return np_.round(data * _INT16_MAX).astype("<i2")
+
+
+def _wav_bytes(pcm: Any, rate: int) -> bytes:
     buf = io.BytesIO()
     with wav_file.open(buf, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(rate)
         w.writeframes(pcm.tobytes())
+    return buf.getvalue()
+
+
+def audio_format_for(path: str | PathLike[str]) -> str:
+    """
+    The output format (one of `AUDIO_FORMATS`) for a file name, from its
+    extension, case-insensitively.
+
+    :raises ValueError: For any other extension.
+    """
+    fmt = PurePath(path).suffix.lower().removeprefix(".")
+    if fmt not in AUDIO_FORMATS:
+        supported = ", ".join(f".{f}" for f in AUDIO_FORMATS)
+        raise ValueError(
+            f"can't tell the audio format of {str(path)!r} from its extension; "
+            f"use one of {supported}"
+        )
+    return fmt
+
+
+def check_audio_format(
+    fmt: str, rate: int = DEFAULT_RATE, quality: float | None = None
+) -> None:
+    """
+    Check that `to_audio_bytes` can write `fmt` at `rate`, before spending
+    time rendering. A no-op for WAV apart from the argument checks.
+
+    :raises ValueError: For an unknown format, a rate the format doesn't
+     support (Opus and MP3 accept only a few) or a quality outside 0-1.
+    :raises MissingDependencyError: If a compressed format is asked for and
+     soundfile isn't installed, or its libsndfile can't write the format.
+    """
+    if fmt not in AUDIO_FORMATS:
+        raise ValueError(f"unknown audio format {fmt!r}; use one of {AUDIO_FORMATS}")
+    if quality is not None and not 0.0 <= quality <= 1.0:
+        raise ValueError(f"quality must be 0-1, got {quality}")
+    rates = _FORMAT_RATES.get(fmt)
+    if rates is not None and rate not in rates:
+        raise ValueError(
+            f"{fmt} can't be written at {rate} Hz; use one of "
+            f"{', '.join(map(str, rates))}"
+        )
+    if fmt == "wav":
+        return
+    sf = _soundfile()
+    format_, subtype = _SOUNDFILE_FORMATS[fmt]
+    if format_ not in sf.available_formats() or subtype not in sf.available_subtypes(
+        format_
+    ):
+        raise MissingDependencyError(
+            f"the installed libsndfile ({sf.__libsndfile_version__}) can't write "
+            f"{fmt}; upgrade soundfile"
+        )
+
+
+def to_audio_bytes(
+    samples: NDArray[np.float32],
+    rate: int = DEFAULT_RATE,
+    fmt: str = "wav",
+    *,
+    quality: float | None = None,
+) -> bytes:
+    """
+    A mono audio file in one of `AUDIO_FORMATS`: WAV as `to_wav_bytes`; FLAC
+    (16-bit, the same samples as the WAV); Ogg Vorbis (`ogg`), Ogg Opus
+    (`opus`) and MP3, which are lossy. Samples past +-1 are clipped first, with
+    `to_wav_bytes`'s WARNING.
+
+    :param quality: 0-1, higher is better and bigger: libsndfile's compression
+     level is ``1 - quality``. Default `DEFAULT_QUALITY` for the lossy formats.
+     For FLAC it only trades encoding speed against size (default:
+     libsndfile's); for WAV it is ignored.
+    :raises ValueError, MissingDependencyError: As `check_audio_format`.
+    """
+    check_audio_format(fmt, rate, quality)
+    np_ = _numpy()
+    data = _clipped(np_, samples)
+    if fmt == "wav":
+        if quality is not None:
+            logger.debug("Quality is ignored for WAV")
+        return _wav_bytes(_pcm16(np_, data), rate)
+    return _encode(np_, data, rate, fmt, quality)
+
+
+def _encode(np_: Any, data: Any, rate: int, fmt: str, quality: float | None) -> bytes:
+    """Encode samples within +-1 with soundfile (no checks or logging)."""
+    sf = _soundfile()
+    format_, subtype = _SOUNDFILE_FORMATS[fmt]
+    if fmt in _LOSSY_FORMATS and quality is None:
+        quality = DEFAULT_QUALITY
+    kwargs: dict[str, float] = {}
+    if quality is not None:
+        level = 1.0 - quality
+        if fmt == "mp3":
+            level = min(level, _MP3_MAX_COMPRESSION_LEVEL)
+        kwargs["compression_level"] = level
+    # FLAC gets the integers WAV would hold, so it decodes to the same samples
+    values = _pcm16(np_, data) if fmt == "flac" else data.astype(np_.float32)
+    buf = io.BytesIO()
+    sf.write(buf, values, rate, format=format_, subtype=subtype, **kwargs)
     return buf.getvalue()

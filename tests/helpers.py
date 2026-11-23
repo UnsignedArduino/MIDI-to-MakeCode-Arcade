@@ -19,8 +19,12 @@ INSTRUMENT_PARAMS = PACKAGE_ROOT / "resources" / "instrument_params.yaml"
 
 # ---------------------------------------------------------------------------
 # A minimal SF2 reader, written from the SoundFont 2.01 spec independently of
-# midi2mkcd.soundfont, to check its output
+# midi2mkcd.soundfont, to check its output. Also reads SF3 (as FluidSynth and
+# SpessaSynth do): shdr start/end of a compressed sample are byte offsets of an
+# Ogg Vorbis stream in smpl, and its loop is relative to the sample's start.
 # ---------------------------------------------------------------------------
+
+SF3_COMPRESSED = 0x10
 
 
 @dataclass
@@ -70,12 +74,30 @@ class Sf2File:
     samples: list[Sf2Header] = field(default_factory=list)
 
     def points(self, header: Sf2Header) -> list[int]:
+        """The sample's 16-bit points; an SF3 sample (compressed flag 0x10) is
+        an Ogg Vorbis stream at byte offsets start-end, decoded with soundfile."""
+        if header.sample_type & SF3_COMPRESSED:
+            import io
+
+            import soundfile
+
+            data, _ = soundfile.read(
+                io.BytesIO(self.smpl[header.start : header.end]), dtype="int16"
+            )
+            return [int(x) for x in data]
         return list(
             struct.unpack(
                 f"<{header.end - header.start}h",
                 self.smpl[2 * header.start : 2 * header.end],
             )
         )
+
+    def loop(self, header: Sf2Header) -> tuple[int, int]:
+        """The loop relative to the sample's start, in points: absolute in SF2,
+        already relative in SF3."""
+        if header.sample_type & SF3_COMPRESSED:
+            return header.loop_start, header.loop_end
+        return header.loop_start - header.start, header.loop_end - header.start
 
 
 def _chunks(data: bytes) -> list[tuple[bytes, bytes]]:

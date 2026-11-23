@@ -3,7 +3,9 @@ editor.
 
 Every sample is rendered the way the simulator plays the note (`audio.py`,
 Stage 1 and 2), so this needs numpy (the `audio` extra). The RIFF file itself
-is written by hand with `struct` (`write_sf2`).
+is written by hand with `struct` (`write_sf2`). With `SoundFontOptions.sf3`
+the samples are Ogg Vorbis (SF3, MuseScore's format), encoded with soundfile
+(the `compress` extra).
 
 Melodic programs become bank 0 presets 0-127; the drum kit is bank 128
 preset 0, one one-shot zone per drum note. A melodic sample holds the note's
@@ -42,7 +44,9 @@ from midi2mkcd.arcade.music_types import LFO, DrumInstrument, Instrument
 from midi2mkcd.arcade.sim_sequencer import FREQUENCIES, MUSIC_DEFAULT_VOLUME
 from midi2mkcd.audio import (
     ProgressCallback,
+    _encode,
     _numpy,
+    check_audio_format,
     drum_instructions,
     note_instructions,
     synthesize,
@@ -80,7 +84,9 @@ _MAX_LFO_LOOP_MS = 4000
 # Above this normalised correlation the loop ends line up: crossfade linearly
 # (equal-power would bump the level by up to 3 dB)
 _LINEAR_CROSSFADE_CORRELATION = 0.5
-_GUARD_POINTS = 46  # zero sample points required after every sample
+_GUARD_POINTS = 46  # zero sample points required after every PCM sample
+_SAMPLE_MONO = 1  # sfSampleType
+_SAMPLE_VORBIS = 0x10  # SF3's flag for an Ogg Vorbis compressed sample
 _POST_LOOP_POINTS = 8  # copies of the loop start after the loop end
 _FULL_VOLUME = 1024  # sequencer volume the samples are rendered at
 _INT16_MAX = 32767
@@ -118,14 +124,23 @@ _MOD_SRC_VELOCITY_SWITCH = 0x0C02
 
 @dataclass(frozen=True)
 class Sf2Sample:
-    """A mono sample: 16-bit little-endian PCM."""
+    """A mono sample: 16-bit little-endian PCM, or for SF3 (`vorbis_frames`
+    set) an Ogg Vorbis stream that decodes to that many sample points."""
 
     name: str
-    pcm: bytes
+    data: bytes
     rate: int
     original_pitch: int  # MIDI note
     # (start, end) in sample points, end exclusive; None for a one-shot
     loop: tuple[int, int] | None = None
+    vorbis_frames: int | None = None
+
+    @property
+    def frames(self) -> int:
+        """The number of sample points."""
+        if self.vorbis_frames is not None:
+            return self.vorbis_frames
+        return len(self.data) // 2
 
 
 @dataclass(frozen=True)
@@ -175,14 +190,16 @@ def write_sf2(
     comment: str | None = None,
 ) -> bytes:
     """
-    A SoundFont 2.01 file.
+    A SoundFont 2.01 file, or an SF3 file (version 3.0) if any sample is Ogg
+    Vorbis (`Sf2Sample.vorbis_frames` set).
 
     Every instrument zone gets `ZONE_MODULATORS`, a looped sample loops
     continuously, and presets have one zone that selects their instrument.
 
     :raises Midi2MkcdError: If the file would be too large for RIFF (4 GB).
     """
-    info = _chunk(b"ifil", struct.pack("<HH", 2, 1))
+    sf3 = any(sample.vorbis_frames is not None for sample in samples)
+    info = _chunk(b"ifil", struct.pack("<HH", *((3, 0) if sf3 else (2, 1))))
     info += _chunk(b"isng", _zstr("EMU8000"))
     info += _chunk(b"INAM", _zstr(name))
     if comment:
@@ -190,23 +207,8 @@ def write_sf2(
 
     smpl = bytearray()
     shdr = bytearray()
-    guard = bytes(2 * _GUARD_POINTS)
     for sample in samples:
-        if len(sample.pcm) % 2:
-            raise ValueError(f"sample {sample.name!r} has an odd byte count")
-        start = len(smpl) // 2
-        end = start + len(sample.pcm) // 2
-        smpl += sample.pcm + guard
-        loop_start, loop_end = (
-            (start + sample.loop[0], start + sample.loop[1])
-            if sample.loop is not None
-            else (start, end)
-        )
-        shdr += _name(sample.name) + struct.pack(
-            "<IIIIIBbHH",
-            start, end, loop_start, loop_end, sample.rate,
-            sample.original_pitch, 0, 0, 1,  # mono
-        )  # fmt: skip
+        shdr += _name(sample.name) + _add_sample_data(smpl, sample)
     shdr += _name("EOS") + bytes(26)
 
     inst = bytearray()
@@ -263,6 +265,38 @@ def write_sf2(
             f"The SoundFont would be {len(body)} bytes, over RIFF's 4 GB limit"
         )
     return _chunk(b"RIFF", body)
+
+
+def _add_sample_data(smpl: bytearray, sample: Sf2Sample) -> bytes:
+    """Append the sample to the smpl data and return its shdr record after the
+    name.
+
+    PCM (SF2): start/end and the loop are absolute sample points, and the
+    sample is followed by 46 zero points. Ogg Vorbis (SF3, as FluidSynth and
+    SpessaSynth read it): start/end are byte offsets of the Ogg stream (end
+    exclusive), the loop is in decoded points relative to the sample's start,
+    the type has the compressed flag, and odd-length streams get one padding
+    byte so the next sample starts on a 16-bit boundary."""
+    loop = sample.loop if sample.loop is not None else (0, sample.frames)
+    if sample.vorbis_frames is None:
+        if len(sample.data) % 2:
+            raise ValueError(f"sample {sample.name!r} has an odd byte count")
+        start = len(smpl) // 2
+        end = start + sample.frames
+        smpl += sample.data + bytes(2 * _GUARD_POINTS)
+        loop_start, loop_end = start + loop[0], start + loop[1]
+        sample_type = _SAMPLE_MONO
+    else:
+        start = len(smpl)
+        end = start + len(sample.data)
+        smpl += sample.data + bytes(len(sample.data) % 2)
+        loop_start, loop_end = loop
+        sample_type = _SAMPLE_MONO | _SAMPLE_VORBIS
+    return struct.pack(
+        "<IIIIIBbHH",
+        start, end, loop_start, loop_end, sample.rate,
+        sample.original_pitch, 0, 0, sample_type,
+    )  # fmt: skip
 
 
 def _zone_generators(zone: Sf2Zone, looped: bool) -> bytes:
@@ -474,15 +508,21 @@ def _trim_silence(np_: Any, samples: Any) -> Any:
     return samples[: int(audible[-1]) + 1 if len(audible) else 0]
 
 
-def _pcm(np_: Any, samples: Any) -> bytes:
-    """16-bit PCM, padded with silence to the shortest sample SF2 allows."""
+def _encode_sample(
+    np_: Any, samples: Any, options: SoundFontOptions
+) -> tuple[bytes, int | None]:
+    """The sample's data and `Sf2Sample.vorbis_frames`: 16-bit PCM (None), or
+    Ogg Vorbis with `options.sf3`. Padded with silence to the shortest sample
+    SF2 allows."""
     if len(samples) < _MIN_SAMPLE_POINTS:
         samples = np_.concatenate(
             [samples, np_.zeros(_MIN_SAMPLE_POINTS - len(samples))]
         )
-    pcm = np_.round(np_.clip(samples, -1.0, 1.0) * _INT16_MAX).astype("<i2")
-    data: bytes = pcm.tobytes()
-    return data
+    samples = np_.clip(samples, -1.0, 1.0)
+    if options.sf3:
+        return _encode(np_, samples, options.rate, "ogg", options.quality), len(samples)
+    data: bytes = np_.round(samples * _INT16_MAX).astype("<i2").tobytes()
+    return data, None
 
 
 def _release_timecents(release_ms: float) -> int:
@@ -554,8 +594,14 @@ class SoundFontOptions:
     rate: int = DEFAULT_RATE
     velocity_layers: int = 1
     volume: float = MUSIC_DEFAULT_VOLUME  # music.volume(), 0-255
+    # SF3: Ogg Vorbis samples (needs soundfile), at `quality` (0-1, default
+    # `audio.DEFAULT_QUALITY`; see `audio.to_audio_bytes`)
+    sf3: bool = False
+    quality: float | None = None
 
     def check(self) -> None:
+        if self.quality is not None and not 0.0 <= self.quality <= 1.0:
+            raise ValueError(f"quality must be 0-1, got {self.quality}")
         if self.step < 1:
             raise ValueError(f"step must be at least 1, got {self.step}")
         if self.rate <= 0:
@@ -571,8 +617,9 @@ class SoundFontOptions:
 def estimate_size(
     params: ParamsInput = None, options: SoundFontOptions | None = None
 ) -> int:
-    """An upper bound on the size in bytes of `build_soundfont`'s output
-    (sample data only; the rest is a few hundred KB at most)."""
+    """An upper bound on the size in bytes of `build_soundfont`'s output as
+    SF2 (sample data only; the rest is a few hundred KB at most). An SF3 is
+    much smaller, by an amount that depends on the sounds."""
     options = options or SoundFontOptions()
     options.check()
     mapping = _resolve_params(params)
@@ -609,19 +656,28 @@ def build_soundfont(
      layers, and the `music.volume()` to match.
     :param progress: Called as ``progress(done, total)`` with the number of
      samples rendered: once with 0, then after each.
-    :raises MissingDependencyError: If numpy isn't installed.
+    :raises MissingDependencyError: If numpy isn't installed, or soundfile for
+     `options.sf3`.
     :raises Midi2MkcdError: If the file would be over 4 GB.
     """
     options = options or SoundFontOptions()
     options.check()
     np_ = _numpy()
+    if options.sf3:
+        check_audio_format("ogg", options.rate, options.quality)
     mapping = _resolve_params(params)
     size = estimate_size(mapping, options)
-    logger.info(
-        f"Expected size: up to {size / 1e6:.0f} MB of samples "
-        f"(--step {options.step}; a larger step renders fewer notes)"
-    )
-    if size > _MAX_RIFF_BYTES:
+    if options.sf3:
+        logger.info(
+            f"Uncompressed size would be up to {size / 1e6:.0f} MB of samples; "
+            "the SF3 will be much smaller"
+        )
+    else:
+        logger.info(
+            f"Expected size: up to {size / 1e6:.0f} MB of samples "
+            f"(--step {options.step}; a larger step renders fewer notes)"
+        )
+    if size > _MAX_RIFF_BYTES and not options.sf3:
         raise Midi2MkcdError(
             f"The SoundFont would be about {size / 1e9:.1f} GB, over RIFF's 4 GB "
             "limit; render fewer notes (a larger step or a smaller note range)"
@@ -662,13 +718,15 @@ def build_soundfont(
                 gain = _melodic_gain(root, k, vel_high, len(layers), options.volume)
                 data, loop = _render_melodic(np_, arcade, root, gain, options.rate)
                 suffix = f" V{vel_high}" if len(layers) > 1 else ""
+                encoded, frames = _encode_sample(np_, data, options)
                 samples.append(
                     Sf2Sample(
                         f"P{program:03d} N{root:03d}{suffix}",
-                        _pcm(np_, data),
+                        encoded,
                         options.rate,
                         root,
                         loop,
+                        frames,
                     )
                 )
                 zones.append(
@@ -694,7 +752,10 @@ def build_soundfont(
             advance()
             continue
         data = _render_drum(np_, _arcade_drum(drum), drum_gain, options.rate)
-        samples.append(Sf2Sample(f"D{note:03d}", _pcm(np_, data), options.rate, note))
+        encoded, frames = _encode_sample(np_, data, options)
+        samples.append(
+            Sf2Sample(f"D{note:03d}", encoded, options.rate, note, vorbis_frames=frames)
+        )
         drum_zones.append(
             Sf2Zone(
                 sample=len(samples) - 1,
@@ -710,4 +771,7 @@ def build_soundfont(
         presets.append(Sf2Preset("Arcade Drum Kit", DRUM_BANK, 0, len(instruments) - 1))
 
     logger.info(f"{len(presets)} presets, {len(samples)} samples at {options.rate} Hz")
-    return write_sf2(name, samples, instruments, presets, comment=comment)
+    data = write_sf2(name, samples, instruments, presets, comment=comment)
+    if options.sf3:
+        logger.info(f"SF3 size: {len(data) / 1e6:.1f} MB")
+    return data
