@@ -11,7 +11,9 @@ Yamaha XG SysEx commands.
 2. Clone this repo.
 3. Run `uv sync` to create a virtual environment and install all dependencies.
    Use `uv sync --extra optional` if you also want `--copy` (copy the output to
-   the clipboard, which needs `pyperclip`).
+   the clipboard, which needs `pyperclip`), and `uv sync --extra audio` for
+   `render` (which needs `numpy`, and `tqdm` for its progress bar). The dev
+   environment `uv sync` makes already has both.
 
 ## Usage
 
@@ -22,6 +24,9 @@ subcommand:
 * `convert`: convert a MIDI file to Arcade code.
 * `recover-midi`: turn converted Arcade code back into a MIDI file (lossy; see
   [Recovering a lost MIDI file](#recovering-a-lost-midi-file)).
+* `render`: play a MIDI file or converted song into a WAV file, sounding like
+  the MakeCode Arcade simulator (see
+  [Listening without Arcade](#listening-without-arcade)).
 * `tune replace`, `tune sample`, `tune report`: tools for writing and tuning
   instrument parameter files (see
   [Defining your own instrument parameter file](#defining-your-own-instrument-parameter-file)).
@@ -109,6 +114,34 @@ From plain hex, instruments and drums are found by matching each track
 against the instrument parameter file (pass the one you converted with as
 `-p`), and lyrics are lost. More than 15 instruments spill onto a second MIDI
 port.
+
+### Listening without Arcade
+
+`render` synthesizes a song the way the MakeCode Arcade browser simulator
+plays it (Chrome's Web Audio) and writes a mono 16-bit WAV file (`-o` is
+required). It needs numpy (`uv sync --extra audio`, or
+`pip install "midi2mkcd[audio]"`).
+
+```commandline
+uv run midi2mkcd render "Never Gonna Give You Up.mid" -o "never.wav"
+uv run midi2mkcd render "Never Gonna Give You Up.ts" -o "never.wav"
+```
+
+The input is a MIDI file (converted first; `-p` picks the instrument
+parameter file) or a text file holding one `` hex`...` `` song. The file's
+content decides which, not its extension. `--volume` is the game's
+`music.volume()` (0-255, default 128 like Arcade, which plays songs 18 dB below
+full scale), `--no-velocity` plays every note at full velocity (as older Arcade
+versions did), and `--rate` sets the sample rate (default 48000 Hz).
+
+Like the simulator, a converted song plays about 4% fast (its ticks are 20 ms
+apart instead of 20.83 ms). Checked against a recording of the simulator, the
+render matches to within about 0.1 dB in level, tone and timing. The simulator
+itself sometimes starts a short sound a few ms late or cuts it a few ms early,
+and that random timing isn't copied. Loud passages that would clip are clipped
+in the WAV with a warning. Rendering takes a while on long songs (roughly 300
+sounds per second), so a progress bar is shown on stderr when it's a terminal
+and `tqdm` is installed (it comes with the `audio` extra).
 
 ### Simulator crash risk (WebAudio memory leak)
 
@@ -258,17 +291,22 @@ for warning in result.warnings:  # e.g. the simulator crash-risk warning
 Errors from bad input are subclasses of `midi2mkcd.Midi2MkcdError`:
 `InvalidMidiError` (the MIDI could not be parsed), `InstrumentParamsError` (bad
 YAML, invalid entries, or an instrument the song uses has no entry) and
-`SongConstraintError` (the song can't fit Arcade's song format) and
-`InvalidSongError` (Arcade song text that can't be read back). The library
-only logs through the standard `logging` module (the `midi2mkcd` logger) and
-never prints. The tuning tools are in `midi2mkcd.tuning`, and
-`midi2mkcd.song_to_midi.song_to_midi(text, params=None)` returns recovered
-MIDI file bytes.
+`SongConstraintError` (the song can't fit Arcade's song format),
+`InvalidSongError` (Arcade song text that can't be read back) and
+`MissingDependencyError` (an optional dependency such as numpy isn't
+installed). The library only logs through the standard `logging` module (the
+`midi2mkcd` logger) and never prints. The tuning tools are in
+`midi2mkcd.tuning`, `midi2mkcd.song_to_midi.song_to_midi(text, params=None)`
+returns recovered MIDI file bytes, and `midi2mkcd.audio` renders audio:
+`render_song(result.song)` gives float32 samples (numpy; pass
+`progress=callback` to get `callback(done, total)` per sound) and
+`to_wav_bytes(samples)` a WAV file.
 
 ### Help text
 
 ```commandline
-usage: midi2mkcd [-h] [--version] {convert,recover-midi,tune,params} ...
+usage: midi2mkcd [-h] [--version]
+                 {convert,recover-midi,render,tune,params} ...
 
 Convert a MIDI file to a MakeCode Arcade song.
 
@@ -277,9 +315,11 @@ options:
   --version             show program's version number and exit
 
 commands:
-  {convert,recover-midi,tune,params}
+  {convert,recover-midi,render,tune,params}
     convert             Convert a MIDI file to Arcade code.
     recover-midi        Recover a MIDI file from a converted song (lossy).
+    render              Render a MIDI file or converted song to WAV, as the
+                        simulator plays it.
     tune                Tools for auditioning instrument parameters against a
                         song.
     params              Print or check instrument parameter files.
@@ -336,6 +376,41 @@ options:
                        Default: the bundled parameters.
   -o, --output OUT     MIDI file to write (overwritten if it exists).
                        Required: binary output never goes to stdout.
+  -v, --verbose        Show debug logging on stderr, and tracebacks for
+                       errors.
+```
+
+```commandline
+usage: midi2mkcd render [-h] [-p PARAMS] [--rate HZ] [--volume 0-255]
+                        [--no-velocity] -o OUT [-v]
+                        INPUT
+
+Synthesize a song the way the MakeCode Arcade simulator plays it
+(Chrome's Web Audio) and write a mono 16-bit WAV file. Needs numpy:
+pip install "midi2mkcd[audio]".
+
+INPUT is a MIDI file (converted first, with PARAMS) or a text file
+with one hex`...` song (convert's output in any format). The type
+is decided by the file's content, not its extension.
+
+Like the simulator, ticks are 20 ms apart, so converted songs play
+4% fast.
+
+positional arguments:
+  INPUT                MIDI file, or text file with one hex`...` song.
+
+options:
+  -h, --help           show this help message and exit
+  -p, --params PARAMS  Instrument parameter YAML file for MIDI input. Default:
+                       the bundled parameters. Not allowed for song text
+                       input, whose instruments are in the song.
+  --rate HZ            Sample rate. Default: 48000.
+  --volume 0-255       music.volume() in the game. Default: 128, Arcade's
+                       default.
+  --no-velocity        Play every note at full velocity, as Arcade versions
+                       that ignore the velocity section do.
+  -o, --output OUT     WAV file to write (overwritten if it exists). Required:
+                       binary output never goes to stdout.
   -v, --verbose        Show debug logging on stderr, and tracebacks for
                        errors.
 ```

@@ -1,12 +1,21 @@
 """Runs the CLI in-process and checks its output, exit statuses and errors."""
 
+import re
+import sys
+import wave
 from pathlib import Path
 
 import pytest
 from helpers import FIXTURE_MIDI, GOLDEN
 
-from midi2mkcd import __version__, default_instrument_params_text, render, tuning
-from midi2mkcd.cli import main
+from midi2mkcd import (
+    __version__,
+    convert,
+    default_instrument_params_text,
+    render,
+    tuning,
+)
+from midi2mkcd.cli import _render_summary, main
 from midi2mkcd.song_to_midi import song_to_midi
 
 INPUT = str(FIXTURE_MIDI)
@@ -142,6 +151,7 @@ def test_verbose_reraises_errors(tmp_path: Path) -> None:
         ["params", "show", "-h"],
         ["params", "check", "-h"],
         ["recover-midi", "-h"],
+        ["render", "-h"],
     ],
     ids=" ".join,
 )
@@ -169,6 +179,9 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["params", "check", "-o", "x"],
         ["convert", INPUT, "-f", "wav"],
         ["recover-midi", INPUT],
+        ["render", INPUT],
+        ["render", INPUT, "-o", "x.wav", "--volume", "256"],
+        ["render", INPUT, "-o", "x.wav", "--rate", "0"],
     ],
     ids=lambda argv: " ".join(Path(a).name for a in argv) or "bare",
 )
@@ -212,3 +225,116 @@ def test_recover_midi_bad_input_is_a_clean_error(
     assert message in err
     assert "Traceback" not in err
     assert not (tmp_path / "out.mid").exists()
+
+
+def _wav_frames(path: Path) -> tuple[int, int, bytes]:
+    with wave.open(str(path)) as w:
+        return w.getnchannels(), w.getframerate(), w.readframes(w.getnframes())
+
+
+def test_render_midi_and_song_text_give_the_same_wav(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    from_midi = tmp_path / "midi.wav"
+    assert run(["render", INPUT, "-o", str(from_midi), "--rate", "22050"]) == 0
+    channels, rate, frames = _wav_frames(from_midi)
+    assert (channels, rate) == (1, 22050)
+    assert len(frames) > 2 * 22050 and any(frames)
+
+    # Content decides the type: song text in a .mid file works
+    song = tmp_path / "song.mid"
+    song.write_text(convert(FIXTURE_MIDI).to_typescript("code"), encoding="utf-8")
+    from_text = tmp_path / "text.wav"
+    assert run(["render", str(song), "-o", str(from_text), "--rate", "22050"]) == 0
+    assert _wav_frames(from_text) == (channels, rate, frames)
+
+
+def test_render_options_change_the_output(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    outputs: list[bytes] = []
+    for extra in ([], ["--volume", "255"], ["--no-velocity"]):
+        out = tmp_path / f"{len(outputs)}.wav"
+        assert run(["render", INPUT, "-o", str(out), "--rate", "8000", *extra]) == 0
+        outputs.append(_wav_frames(out)[2])
+    assert len(set(outputs)) == 3
+
+
+@pytest.mark.parametrize(
+    ("content", "params", "message"),
+    [
+        (b"RIFF\x00\x00\x00\x00RMIDdata", False, "RIFF MIDI"),
+        (b"// no song", False, "found none"),
+        (b"\xff\xfe\x00garbage", False, "neither a MIDI file nor"),
+        (b"hex`0000`", True, "-p only applies to MIDI input"),
+    ],
+    ids=["rmi", "no literal", "binary", "text with -p"],
+)
+def test_render_bad_input_is_a_clean_error(
+    content: bytes,
+    params: bool,
+    message: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    song = tmp_path / "input"
+    song.write_bytes(content)
+    argv = ["render", str(song), "-o", str(tmp_path / "out.wav")]
+    if params:
+        params_file = tmp_path / "params.yaml"
+        params_file.write_text(default_instrument_params_text(), encoding="utf-8")
+        argv += ["-p", str(params_file)]
+    assert run(argv) == 1
+    err = capsys.readouterr().err
+    assert message in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "out.wav").exists()
+
+
+def test_render_progress_bar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    tqdm = pytest.importorskip("tqdm")
+    # Captured stderr isn't a terminal, so force the bar on to see it
+    real_tqdm = tqdm.tqdm
+    monkeypatch.setattr(
+        tqdm, "tqdm", lambda **kwargs: real_tqdm(**{**kwargs, "disable": False})
+    )
+    out = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
+    err = capsys.readouterr().err
+    assert "Rendering: 100%" in err
+    assert " sound/s" in err or "sound/s]" in err
+
+
+def test_render_logs_its_speed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    out = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
+    assert re.search(
+        r"Rendered \d+\.\d\d s at 8000 Hz in \d+\.\d\d s \(speed=\d+\.\dx\)",
+        capsys.readouterr().err,
+    )
+    assert _render_summary(217.68, 48000, 13.0) == (
+        "Rendered 217.68 s at 48000 Hz in 13.00 s (speed=16.7x)"
+    )
+    assert _render_summary(1.0, 48000, 0.0) == "Rendered 1.00 s at 48000 Hz in 0.00 s"
+
+
+def test_render_without_tqdm_still_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("numpy")
+    monkeypatch.setitem(sys.modules, "tqdm", None)
+    out = tmp_path / "out.wav"
+    assert run(["render", INPUT, "-o", str(out), "--rate", "8000"]) == 0
+    assert out.read_bytes().startswith(b"RIFF")
+
+
+def test_render_without_numpy_is_a_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(sys.modules, "numpy", None)
+    assert run(["render", INPUT, "-o", str(tmp_path / "out.wav")]) == 1
+    assert 'needs numpy: pip install "midi2mkcd[audio]"' in capsys.readouterr().err

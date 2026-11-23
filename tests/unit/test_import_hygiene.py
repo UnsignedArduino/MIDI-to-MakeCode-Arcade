@@ -23,7 +23,7 @@ import sys
 
 import midi2mkcd.audio
 
-for name in ("numpy", "scipy", "cma"):
+for name in ("numpy", "scipy", "cma", "tqdm"):
     assert name not in sys.modules, f"{name} was imported"
 """
 

@@ -18,6 +18,7 @@ from midi2mkcd.errors import (
     InvalidMidiError,
     InvalidSongError,
     Midi2MkcdError,
+    MissingDependencyError,
     SongConstraintError,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "InvalidMidiError",
     "InvalidSongError",
     "Midi2MkcdError",
+    "MissingDependencyError",
     "OutputFormat",
     "SongConstraintError",
     "__version__",

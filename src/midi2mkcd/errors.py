@@ -26,6 +26,13 @@ class SongConstraintError(Midi2MkcdError):
     """The song cannot fit MakeCode Arcade's song format (too many tracks, etc.)."""
 
 
+class MissingDependencyError(Midi2MkcdError):
+    """
+    A feature needs an optional dependency that isn't installed (e.g. audio
+    rendering needs numpy, the `audio` extra). The message names the extra.
+    """
+
+
 class InvalidSongError(Midi2MkcdError):
     """
     A MakeCode Arcade song (or the text holding it) could not be read: no single

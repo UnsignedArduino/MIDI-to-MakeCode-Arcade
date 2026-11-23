@@ -8,8 +8,11 @@ go with it.
 
 import json
 import re
+import struct
 from dataclasses import dataclass, field
 
+from midi2mkcd.arcade.music import decode_song_from_hex
+from midi2mkcd.arcade.music_types import Song
 from midi2mkcd.errors import InvalidSongError
 
 HEX_LITERAL = re.compile(r"hex`([^`]*)`")
@@ -67,6 +70,18 @@ def parse_song_text(text: str) -> SongText:
         lyric_ticks=_int_array(consts, "lyricTicks"),
         lyric_texts=_str_array(consts, "lyricTexts"),
     )
+
+
+def decode_song_hex(digits: str) -> Song:
+    """
+    Decode `SongText.hex` into a song.
+
+    :raises InvalidSongError: If the buffer doesn't decode.
+    """
+    try:
+        return decode_song_from_hex(digits)
+    except (ValueError, IndexError, struct.error) as e:
+        raise InvalidSongError(f"Could not decode the song: {e}") from e
 
 
 def _array(consts: dict[str, str], name: str) -> list[object]:

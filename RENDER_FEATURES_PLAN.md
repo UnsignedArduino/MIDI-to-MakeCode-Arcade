@@ -31,7 +31,8 @@ conversion algorithm or the existing golden outputs.
 | `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
 | Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
-| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with the numpy `audio` extra (open question 6), then `synthesize`. Read section 2 "Stage 2" (incl. the stop-at-end and rest notes) and section 4. The clean reference recording is `testing/calibration/calibration_recording_3_clean.mkv`; the measurement scripts are in `testing/calibration/analysis/`; only the render-vs-recording comparison is still to write (section 4, Validation 2). |
+| Synthesizer Stage 2 + `render` (section 4) | **Done** (2026-11-23, branch `render-features`) | numpy `audio` extra, `synthesize` / `render_song` / `to_wav_bytes`, `midi2mkcd render` (tqdm progress bar, speed log line), tests, README/CLAUDE.md. Speeding it up is deferred. Checked against calibration recording 3 with `testing/calibration/analysis/compare.py`: matches to ~0.1 dB. See "Stage 2 status" in section 4. |
+| `tune replace/sample --wav`     | **Next** | Section 4, "CLI behaviour". `render_song` + `to_wav_bytes` already do the work; `tune sample --wav` needs the sampler's `ConversionResult`s (see the bullet there). |
 | `params soundfont` (section 5)  | Not started | |
 | `params fit` (section 6)        | Not started | |
 | Two-layer instruments           | Deferred (last) | |
@@ -57,9 +58,11 @@ src/midi2mkcd/
   tuning.py          # convert_replaced, sample_melodics, sample_drums, report, check_params,
                      #   InstrumentUsage; NOT imported by the package root
   render.py          # ALL text output: to_typescript, song_hex, sampler, usage_report
+  audio.py           # song -> play instructions -> samples -> WAV (added by the render work,
+                     #   section 4); numpy imported lazily; NOT imported by the package root
   song_to_midi/      # __init__.py: song_to_midi (added by recover-midi, see section 3)
   errors.py          # Midi2MkcdError > InvalidMidiError, InstrumentParamsError, SongConstraintError,
-                     #   InvalidSongError (added by recover-midi)
+                     #   InvalidSongError (added by recover-midi), MissingDependencyError (render)
   cli.py             # argparse subcommands; file I/O; logging setup; clipboard
   __main__.py
   resources/instrument_params.yaml        # bundled default params (hand-tuned)
@@ -77,7 +80,7 @@ src/midi2mkcd/
     sim_sequencer.py # port of pxtsim/sound/sequencer.ts: FREQUENCIES, tick_to_ms,
                      #   metronome_interval_ms, volume formulas, sequence_song (Stage 0/1)
   utils/strings.py (parse_range, format_ranges), format.py, resources.py, gm_names.py,
-        song_text.py (parse_song_text, added by recover-midi)
+        song_text.py (parse_song_text, added by recover-midi; decode_song_hex, added by render)
 ```
 
 Name clash to avoid: `render.py` already means **text** rendering. The audio
@@ -651,10 +654,11 @@ midi2mkcd tune sample  INPUT.mid ... [--wav OUT.wav]
 ```python
 def note_instructions(instrument: Instrument, note_index: int, gate_ms: float, volume: float) -> bytes
 def drum_instructions(drum: DrumInstrument, volume: float) -> bytes
-def song_events(song: Song, *, use_velocity: bool = True) -> list[tuple[float, bytes]]   # (start ms, instructions)
-def synthesize(events: Iterable[tuple[float, bytes]], rate: int = 48000) -> np.ndarray      # float32 mono
-def render_song(song: Song, rate: int = 48000, *, use_velocity: bool = True) -> np.ndarray
-def to_wav_bytes(samples: np.ndarray, rate: int) -> bytes                                   # stdlib `wave`
+def song_events(song: Song, *, use_velocity: bool = True, global_volume: float = 128) -> list[tuple[float, bytes]]   # (start ms, instructions)
+def synthesize(events: Iterable[tuple[float, bytes]], rate: int = 48000, *, progress=None) -> np.ndarray      # float32 mono
+def render_song(song: Song, rate: int = 48000, *, use_velocity: bool = True, global_volume: float = 128, progress=None) -> np.ndarray
+def to_wav_bytes(samples: np.ndarray, rate: int = 48000) -> bytes                           # stdlib `wave`
+# progress: Callable[[int, int], None], called as progress(done, total) per sound (as built)
 ```
 
 Stage 1 (`note_instructions`, `drum_instructions`, `song_events`) is pure
@@ -757,6 +761,74 @@ Stage 2 implementation notes:
   section. `--no-velocity` (`use_velocity=False`) treats every event as
   velocity 128, to hear the song as older Arcade versions (which ignore the
   section) play it.
+
+### Stage 2 status (2026-11-23): done, with `render`
+
+Built as designed above; don't redo it.
+
+- **Dependency (open question 6, closed):** `numpy>=2.5.5` is the `audio`
+  extra and is in the dev group; `uv` resolved a cp314 wheel (win32/amd64 seen
+  in `uv.lock`). Tests that need it use `pytest.importorskip("numpy")`.
+- **`audio.py`:**
+  - `synthesize(events, rate=48000) -> float32 ndarray`, `render_song(song,
+    rate, *, use_velocity, global_volume)` and `to_wav_bytes(samples, rate)`
+    (mono 16-bit, hard clip, WARNING with the peak and clipped-sample count).
+  - numpy is only imported inside them (`_numpy()`); a missing numpy raises
+    the new `errors.MissingDependencyError` (a `Midi2MkcdError`, exported from
+    the root), so the CLI prints `error: audio rendering needs numpy: pip
+    install "midi2mkcd[audio]"` and exits 1.
+  - How it follows `playInstructions.ts` (all read from the source, not
+    guessed): every generator runs from the note's start (`start()` is called
+    while scheduling) with gain 0. Automation is evaluated exactly at each
+    sample's time, with no per-instruction rounding. Gain is set and ramped per
+    instruction and held between them; a waveform change starts
+    `setTargetAtTime(0, t, 15 ms)` on the old waveform; rests only advance
+    time; the note stops at the end of its instructions. Oscillator frequency
+    is set and ramped per instruction. Buffer-source `playbackRate` is one
+    chain of linear ramps from the creation value at the note's start (the
+    Web Audio rule for a ramp with no previous event). It is k-rate, constant
+    per 128-sample quantum, counted from sample 0 of the output. Looped
+    buffers use linear interpolation. An unknown waveform stops the rest of
+    that sound (pxt throws there).
+  - **Triangle and sawtooth** imitate Chrome's `PeriodicWave`: 4096-sample
+    tables, three partial-count ranges per octave, blended between the two
+    nearest ranges, and normalised so the full-band table peaks at 1. That
+    normalisation gives the measured −1.5 dB on sawtooth.
+  - The buffers (xorshift noise, tunable noise, squares, cycles) are cached
+    per waveform with `functools.cache`.
+  - **Speed:** the 98 s calibration song renders in under 1 s. Dense songs
+    take longer: "All I Want For Christmas Is You" (9,989 sounds, 218 s of
+    audio) took 13 s on the user's machine (about 750 sounds/s, 16.7× real
+    time), and up to 43 s on a slow run. Almost all of that is in
+    `synthesize`. **Deferred by the user** (2026-11-23): speeding up
+    `_render_note` (e.g. the per-sample periodic-wave lookups, or whole-note
+    arrays for every waveform) is not needed for now.
+  - **Progress:** `synthesize(..., progress=cb)` and `render_song(...,
+    progress=cb)` call `cb(done, total)` once with 0, then after each sound.
+    `render` shows it as a tqdm bar on stderr (`cli._ProgressBar`, only when
+    stderr is a terminal). tqdm is in the `audio` extra and the dev group
+    (`types-tqdm` too); without tqdm there's just no bar.
+    `test_import_hygiene.py` checks that importing `midi2mkcd.audio` doesn't
+    import tqdm. When it finishes, `render` logs the wall time and an
+    ffmpeg-style speed (`cli._render_summary`): `Rendered 217.68 s at 48000 Hz
+    in 13.00 s (speed=16.7x)`.
+- **`utils/song_text.py::decode_song_hex`** (moved from `song_to_midi`'s
+  `_decode`) decodes the literal for both `recover-midi` and `render`.
+- **CLI `render`** (`cli.py::_run_render`, `_read_render_input`): input type
+  by content as designed (MThd → `convert`; RIFF+RMID → `InvalidMidiError`;
+  else UTF-8 text → `parse_song_text`; undecodable → `InvalidSongError`), `-p`
+  with text input → `Midi2MkcdError`. `--rate` (positive int, default 48000),
+  `--volume` (0–255, default 128), `--no-velocity`, `-o` required.
+- **Tests:** `tests/unit/test_synthesize.py` (sine level −21.17 dBFS and
+  262 Hz, squares −3 dB, no aliasing above 23 kHz for triangle/saw, silence
+  before the first note and exact length, summing, stop at end, rests hold,
+  the 15 ms fade, out-of-range notes (silent sine, DC square), noise ignores
+  frequency, buffer contents, drum shorter than a held note, WAV header and
+  clipping warning, progress callback, missing numpy).
+  `tests/integration/test_cli.py`: MIDI and song text give the same WAV,
+  options change the output, every bad-input branch, usage errors, missing
+  numpy, the progress bar, rendering without tqdm, the speed log line,
+  `render -h`. All tests, ruff, mypy strict and pre-commit pass.
 
 ### CLI behaviour
 
@@ -975,18 +1047,66 @@ Stage 2 implementation notes:
    - `check_chain.py [REC.wav]`: the chain test; default
      `chain_test_recording_clean.wav` (the clean chain-test recording's
      audio, also copied in).
-   **Still to write:** the render-vs-recording comparison. Reuse
-   `common.py`'s alignment: render `calibration.ts` with `render` (start =
-   tick 0, no latency), put it through the same per-section measurements as
-   the recording (minus the +3.01 dB), and report the differences per
-   section.
-   Expect several "slightly off"
-   rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
-   on the page's audio), but don't block on it.
+   **Render vs recording (done 2026-11-23).** New scripts in
+   `testing/calibration/analysis/` (gitignored):
+   - `compare.py`: per manifest event, aligns the render to the recording
+     locally and reports level, 5 ms envelope, 1/3-octave spectrum and
+     sounding-length differences, per section plus outliers. `RENDER`
+     defaults to `calibration_render.wav`; `VERBOSE=1` prints every event.
+   - `inspect_event.py LABEL...`: one event's envelopes (`STEP`, `FLOOR`) and
+     band levels.
+   - `fine.py LABEL [MS]`: a 1 ms envelope.
+   - `onsets.py`: how many ms of each drum's start the recording skips.
+     Unreliable on noise and cycle drums with silent gaps; read it together
+     with `fine.py`.
+   - `common.py` now scales 16-bit WAVs, so `REC=../calibration_render.wav
+     LATE=0` runs `levels.py`, `env.py`, `poly.py` and `align.py` on the render
+     too.
+   Steps: `uv run midi2mkcd render testing/calibration/calibration.ts -o
+   testing/calibration/calibration_render.wav`, then `cd
+   testing/calibration/analysis` and `uv run --with scipy python compare.py`.
+   Results (recording minus 3.01 dB, minus render):
+   - **Levels:** every waveform within 0.1 dB at velocity 127/64/32. The one
+     exception is noise at −1.0 dB, which is the recording's AAC low-pass
+     (expected, see above). `levels.py` on the render matches the recording's
+     table, sawtooth included (−3.22 vs −3.29).
+   - **Spectra:** harmonics within ±0.5 dB up to 16 kHz for saw, squares and
+     the rest. Bands between harmonics differ only because the recording has a
+     ~40 dB-down noise floor, so `compare.py` only compares bands within 35 dB
+     of the peak in both.
+   - **Polyphony:** within 0.02 dB for chords of 1–32 notes.
+   - **Envelopes and LFOs:** within 0.01 dB in level. `env.py` gives the same
+     LFO rates, vibrato ranges, pitch-envelope curve (±7 Hz), and attack-0,
+     release-0 and short-gate shapes. The amp LFO's 5 ms envelope tracks within
+     0.5 dB (the p95/p5 depth number differs only because of where its windows
+     fall).
+   - **Drums:** most match at 1 ms resolution: deterministic buffers
+     (`noise_tunable`, cycles) line up with the recording frame for frame,
+     including their silent gaps, and so do the frequency ramps.
+   - **Not modelled: simulator timing jitter**, which shows on short sounds
+     in two ways:
+     (a) A sound is cut a few ms before the end of its instructions (Sticks:
+     at ~20 of 26 ms). This is the `U.delay` timer that `stop()`s the note,
+     and it happens during the final ramp to 0, so it's inaudible.
+     (b) Sometimes the first 0–15 ms of a sound's automation are missing
+     (High Wood Block: the 10 ms first instruction is gone, and the 20 ms
+     ramp 233→0 starts at the onset; also Low Wood Block, Claves, Jingle Bell,
+     Cowbell, Side Stick ~10–15 ms; most drums 0–5 ms). The likely cause:
+     pxt schedules automation from `context.currentTime`, which Chrome only
+     updates once per audio callback, so it can lag the real render
+     position, while `start()` begins at the real position. That fits the
+     cycle pattern's phase still lining up with the render. Both are
+     random, so `render` stays deterministic and plays every instruction.
+     Revisit only if listening shows it matters.
+   - The first marker beat starts late in the recording (audio start-up, as
+     noted above); ignore it.
+   Optionally automate recording later (Playwright + a `MediaRecorder` on the
+   page's audio), but don't block on it.
 3. Tests in CI: stage-1 goldens; stage 2 sanity checks (a sine note's peak
    frequency and level, silence before the first note, total length, a drum
    is shorter than a held note, clipping warning fires on a loud chord,
-   WAV header fields).
+   WAV header fields). **Done:** `tests/unit/test_synthesize.py`, plus the
+   `render` CLI tests (see "Stage 2 status").
 
 ---
 
@@ -1257,13 +1377,11 @@ working).
    measure with FluidSynth and at least one MIDI editor the user actually
    uses.
 6. **Dependency wheels for Python 3.14** (numpy, scipy, cma, any SF2 test
-   reader). numpy and scipy are expected to have cp314 wheels and cma is
-   pure Python; confirm with `uv add` when each is added. (The Pyodide half
-   of this question is moot while the web page is out of scope.) **Still
-   open; the first Stage 2 step** is adding numpy as the `audio` extra
-   (`[project.optional-dependencies]`), and to the dev group so tests and
-   mypy see it, then checking that `uv sync` gets a cp314 wheel. Stage 2
-   tests that need numpy should `pytest.importorskip("numpy")`.
+   reader). **numpy: answered** (2026-11-23): numpy 2.5.5 has cp314 wheels
+   and is now the `audio` extra and in the dev group. Still to confirm with
+   `uv add` when added: scipy and cma (the `fit` extra; cma is pure Python)
+   and any SF2 test reader. (The Pyodide half of this question is moot while
+   the web page is out of scope.)
 7. ~~**`render`'s default sample rate.**~~ Answered: the user's simulator
    runs at **48000 Hz**, so `render --rate` defaults to 48000 (the
    recording above was also 48 kHz). Others can check theirs with

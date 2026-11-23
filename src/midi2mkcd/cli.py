@@ -6,6 +6,7 @@ clipboard. Everything else is a library call.
 import logging
 import sys
 import textwrap
+import time
 from argparse import (
     ArgumentParser,
     ArgumentTypeError,
@@ -15,17 +16,20 @@ from argparse import (
 from collections.abc import Callable
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
-from midi2mkcd import __version__, render, tuning
+from midi2mkcd import __version__, audio, render, tuning
 from midi2mkcd.api import (
     ParamsInput,
     convert,
     default_instrument_params_text,
     load_instrument_params,
 )
-from midi2mkcd.errors import InvalidSongError, Midi2MkcdError
+from midi2mkcd.arcade.music_types import Song
+from midi2mkcd.arcade.sim_sequencer import MUSIC_DEFAULT_VOLUME
+from midi2mkcd.errors import InvalidMidiError, InvalidSongError, Midi2MkcdError
 from midi2mkcd.song_to_midi import song_to_midi
+from midi2mkcd.utils.song_text import decode_song_hex, parse_song_text
 from midi2mkcd.utils.strings import parse_range
 
 logger = logging.getLogger(__name__)
@@ -51,6 +55,26 @@ def range_arg(value: str) -> list[int]:
         return parse_range(value)
     except ValueError as e:
         raise ArgumentTypeError(str(e)) from None
+
+
+def _positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        raise ArgumentTypeError(f"not an integer: {value!r}") from None
+    if number <= 0:
+        raise ArgumentTypeError(f"must be positive: {number}")
+    return number
+
+
+def _volume_arg(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        raise ArgumentTypeError(f"not an integer: {value!r}") from None
+    if not 0 <= number <= 255:
+        raise ArgumentTypeError(f"must be 0-255: {number}")
+    return number
 
 
 def configure_logging(level: int) -> None:
@@ -138,6 +162,33 @@ def build_parser() -> ArgumentParser:
                    "to match instruments and undo pitch compensation. Default: the "
                    "bundled parameters.")  # fmt: skip
     _add_binary_output(p, "MIDI file to write")
+
+    p = _leaf(commands, "render", _run_render,
+              "Render a MIDI file or converted song to WAV, as the simulator plays it.",
+              "Synthesize a song the way the MakeCode Arcade simulator plays it\n"
+              "(Chrome's Web Audio) and write a mono 16-bit WAV file. Needs numpy:\n"
+              'pip install "midi2mkcd[audio]".\n\n'
+              "INPUT is a MIDI file (converted first, with PARAMS) or a text file\n"
+              "with one hex`...` song (convert's output in any format). The type\n"
+              "is decided by the file's content, not its extension.\n\n"
+              "Like the simulator, ticks are 20 ms apart, so converted songs play\n"
+              "4% fast.")  # fmt: skip
+    _add_input(p, "MIDI file, or text file with one hex`...` song.")
+    p.add_argument("-p", "--params", type=Path, metavar="PARAMS",
+                   help="Instrument parameter YAML file for MIDI input. Default: "
+                   "the bundled parameters. Not allowed for song text input, whose "
+                   "instruments are in the song.")  # fmt: skip
+    p.add_argument("--rate", type=_positive_int, default=audio.DEFAULT_RATE,
+                   metavar="HZ",
+                   help=f"Sample rate. Default: {audio.DEFAULT_RATE}.")  # fmt: skip
+    p.add_argument("--volume", type=_volume_arg, default=MUSIC_DEFAULT_VOLUME,
+                   metavar="0-255",
+                   help="music.volume() in the game. Default: "
+                   f"{MUSIC_DEFAULT_VOLUME}, Arcade's default.")  # fmt: skip
+    p.add_argument("--no-velocity", action="store_true",
+                   help="Play every note at full velocity, as Arcade versions "
+                   "that ignore the velocity section do.")  # fmt: skip
+    _add_binary_output(p, "WAV file to write")
 
     tune = _group(commands, "tune", "Tools for auditioning instrument parameters "
                   "against a song.")  # fmt: skip
@@ -271,6 +322,94 @@ def _run_recover_midi(args: Namespace) -> int:
     logger.info(f"Reading song from {args.input}")
     data = song_to_midi(_read_song_text(args.input), _read_params(args.params))
     return _emit_bytes(data, args.output)
+
+
+def _run_render(args: Namespace) -> int:
+    song = _read_render_input(args.input, args.params)
+    started = time.perf_counter()
+    with _ProgressBar("Rendering", "sound") as progress:
+        samples = audio.render_song(
+            song,
+            args.rate,
+            use_velocity=not args.no_velocity,
+            global_volume=args.volume,
+            progress=progress,
+        )
+    logger.info(
+        _render_summary(
+            len(samples) / args.rate, args.rate, time.perf_counter() - started
+        )
+    )
+    return _emit_bytes(audio.to_wav_bytes(samples, args.rate), args.output)
+
+
+def _render_summary(audio_s: float, rate: int, elapsed_s: float) -> str:
+    """E.g. "Rendered 217.68 s at 48000 Hz in 13.02 s (speed=16.7x)", the
+    speed as ffmpeg reports it: seconds of audio per second of wall time."""
+    text = f"Rendered {audio_s:.2f} s at {rate} Hz in {elapsed_s:.2f} s"
+    if elapsed_s > 0:
+        text += f" (speed={audio_s / elapsed_s:.1f}x)"
+    return text
+
+
+class _ProgressBar:
+    """A tqdm bar on stderr driven by a library ``progress(done, total)`` callback.
+
+    tqdm comes with the `audio` extra; without it there is simply no bar. The
+    bar only shows when stderr is a terminal (tqdm's ``disable=None``)."""
+
+    def __init__(self, desc: str, unit: str) -> None:
+        self._desc = desc
+        self._unit = unit
+        self._bar: Any = None
+        self._unavailable = False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._bar is not None:
+            self._bar.close()
+
+    def __call__(self, done: int, total: int) -> None:
+        if self._unavailable:
+            return
+        if self._bar is None:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                logger.debug("No progress bar: tqdm isn't installed")
+                self._unavailable = True
+                return
+            self._bar = tqdm(
+                total=total, desc=self._desc, unit=self._unit, disable=None
+            )
+        self._bar.update(done - self._bar.n)
+
+
+def _read_render_input(path: Path, params: Path | None) -> Song:
+    """A MIDI file (converted with `params`) or song text, told apart by content."""
+    data = path.read_bytes()
+    if data.startswith(b"MThd"):
+        logger.info(f"Converting MIDI file {path}")
+        return convert(data, _read_params(params)).song
+    if data.startswith(b"RIFF") and data[8:12] == b"RMID":
+        raise InvalidMidiError(
+            f"{path} is a RIFF MIDI (.rmi) file, which isn't supported; extract the "
+            "MIDI file inside it with another tool"
+        )
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise InvalidSongError(
+            f"{path} is neither a MIDI file nor a text file with a song"
+        ) from None
+    if params is not None:
+        raise Midi2MkcdError(
+            "-p only applies to MIDI input: a song's instruments are already in it"
+        )
+    logger.info(f"Reading song from {path}")
+    return decode_song_hex(parse_song_text(text).hex)
 
 
 def _run_tune_replace(args: Namespace) -> int:

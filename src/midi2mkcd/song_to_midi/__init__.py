@@ -10,24 +10,18 @@ file's `melodic_pitch_comp_k`. Lyrics only survive in `code_extra` files.
 
 import io
 import logging
-import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo
 
 from midi2mkcd.api import ParamsInput, _resolve_params
-from midi2mkcd.arcade.music import (
-    decode_song_from_hex,
-    encode_drum_instrument,
-    encode_instrument,
-)
-from midi2mkcd.arcade.music_types import Song, Track
-from midi2mkcd.errors import InvalidSongError
+from midi2mkcd.arcade.music import encode_drum_instrument, encode_instrument
+from midi2mkcd.arcade.music_types import Track
 from midi2mkcd.midi_to_song.instruments import InstrumentParameterMapping
 from midi2mkcd.midi_to_song.timeline.processor import pitch_compensation_scale
 from midi2mkcd.utils.gm_names import melodic_instrument_name
-from midi2mkcd.utils.song_text import SongText, parse_song_text
+from midi2mkcd.utils.song_text import SongText, decode_song_hex, parse_song_text
 
 __all__ = ["MIDI_TICKS_PER_BEAT", "song_to_midi"]
 
@@ -66,7 +60,7 @@ def song_to_midi(text: str, params: ParamsInput = None) -> bytes:
     :raises InstrumentParamsError: If the params are invalid.
     """
     song_text = parse_song_text(text)
-    song = _decode(song_text.hex)
+    song = decode_song_hex(song_text.hex)
     if params is None:
         logger.info(
             "Using the bundled default params to match instruments and undo pitch "
@@ -120,13 +114,6 @@ def song_to_midi(text: str, params: ParamsInput = None) -> bytes:
         f"Recovered {len(melodic)} melodic programs and {len(drums)} drum notes"
     )
     return buf.getvalue()
-
-
-def _decode(hex_digits: str) -> Song:
-    try:
-        return decode_song_from_hex(hex_digits)
-    except (ValueError, IndexError, struct.error) as e:
-        raise InvalidSongError(f"Could not decode the song: {e}") from e
 
 
 def _track_programs(
