@@ -30,8 +30,8 @@ conversion algorithm or the existing golden outputs.
 | ------------------------------- | ------ | ----- |
 | `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
 | Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
-| Synthesizer Stage 1 `audio.py` wrappers | **Next** | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. |
-| Synthesizer Stage 2, `render`, `tune ... --wav` | Not started | |
+| Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
+| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with `synthesize` (numpy, `audio` extra). |
 | `params soundfont` (section 5)  | Not started | |
 | `params fit` (section 6)        | Not started | |
 | Two-layer instruments           | Deferred (last) | |
@@ -670,9 +670,25 @@ the names above as thin wrappers over them, and must import numpy lazily
   throws inside the async play call and is silent (skipped, DEBUG log).
 - `Sequencer.globalVolume` starts at 1024, but games set it to
   `music.volume()` (default 128), hence `sequence_song`'s default.
-- `song_events` is then `[(s.tick * metronome_interval_ms(song),
-  s.instructions) for s in sequence_song(...)]`, with `use_velocity=False`
-  clearing every event's velocity first.
+- **`audio.py` Stage 1 is written** (2026-11-23), not re-exported from the
+  package root:
+  - `note_instructions(instrument, note_index, gate_ms, volume)` is
+    `render_instrument` with `note_frequency(note_index)`.
+  - `drum_instructions(drum, volume)` is `render_drum_instrument` (raises
+    `ValueError` for a drum with no steps).
+  - `song_events(song, *, use_velocity=True, global_volume=128) ->
+    list[(start_ms, instructions)]`: `sequence_song`, with start = tick ×
+    `metronome_interval_ms` (20 ms) counted from the first tick.
+    `use_velocity=False` copies the song with every velocity cleared (the
+    input isn't changed). It logs at INFO how many melodic notes are outside
+    the frequency table (they play at 0 Hz). `global_volume` is what
+    `render --volume` will pass.
+  - Tests: `tests/unit/test_audio.py`; `test_import_hygiene.py` now also
+    checks that `import midi2mkcd` doesn't import `midi2mkcd.audio`, and that
+    importing `midi2mkcd.audio` doesn't import numpy, scipy or cma.
+  - Stage 2 goes in the same module: `synthesize` takes `song_events`'s
+    output. Import numpy inside the Stage 2 functions only, and give a
+    missing numpy the plan's "needs numpy: pip install ..." error.
 
 Stage 2 implementation notes:
 
