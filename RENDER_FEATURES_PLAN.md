@@ -31,7 +31,7 @@ conversion algorithm or the existing golden outputs.
 | `recover-midi` (section 3)      | **Done** (2026-11-21, branch `render-features`) | See "Status: done" at the top of section 3. |
 | Synthesizer Stage 1 pxt ports + goldens (section 4) | **Done** (2026-11-23, branch `render-features`) | `arcade/sim_song.py`, `arcade/sim_sequencer.py`, goldens from the real pxt source. See "Stage 1 status" in section 4. |
 | Synthesizer Stage 1 `audio.py` wrappers | **Done** (2026-11-23, branch `render-features`) | `note_instructions` / `drum_instructions` / `song_events` over the ports, no numpy. See "Stage 1 status" in section 4. |
-| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with the numpy `audio` extra (open question 6), then `synthesize`. Read section 2 "Stage 2" (incl. the stop-at-end and rest notes) and section 4. The calibration recordings must be redone (section 4, Validation 2). |
+| Synthesizer Stage 2, `render`, `tune ... --wav` | **Next** | Start with the numpy `audio` extra (open question 6), then `synthesize`. Read section 2 "Stage 2" (incl. the stop-at-end and rest notes) and section 4. The clean reference recording is `testing/calibration/calibration_recording_3_clean.mkv`; the comparison script is still to write (section 4, Validation 2). |
 | `params soundfont` (section 5)  | Not started | |
 | `params fit` (section 6)        | Not started | |
 | Two-layer instruments           | Deferred (last) | |
@@ -898,7 +898,8 @@ Stage 2 implementation notes:
    simulator levels, subtract 3.01 dB, but confirm that Web Audio output
    gets the same +3 dB as an `<audio>` element (for example, check that a
    flat sine at velocity 127 measures ≈ −3.1 dBFS + 3.01 dB). The
-   calibration song must be re-recorded with this setup.
+   calibration song must be re-recorded with this setup. (Done: recording 3
+   below, kept as `testing/calibration/calibration_recording_3_clean.mkv`.)
    **Third calibration recording (clean chain; the reference for Stage 2):**
    - The +3.01 dB applies to Web Audio too: the model plus 3.01 dB matched
      the reference sine (−18.17 dB) and the single chord note (−36.26 vs
@@ -931,20 +932,29 @@ Stage 2 implementation notes:
    - **Drums** last their step total: median 0 ms, 80% within ±12 ms.
    - Ticks: 20 ms, drift 3 ms per 1000 ticks; the first note was ~55 ms
      late this time (so 55–230 ms, varies).
-   **What is on disk now (checked 2026-11-23):** `testing/calibration/` holds
-   only the generators (`make_calibration.py`, `make_chain_test.py`), the
+   **What is on disk now (2026-11-23):** `testing/calibration/` (gitignored)
+   holds the generators (`make_calibration.py`, `make_chain_test.py`), the
    song files (`calibration.ts`, `calibration.mid`,
-   `calibration_params.yaml`, `manifest.json`), `chain_test.wav` and
-   `chain_test.txt`. **None of the three simulator recordings was kept, and
-   the comparison script was never written.** The numbers above are enough
-   for the CI sanity checks (item 3), but the perceptual comparison needs
-   either a recording from the user or a new one: re-run the chain test
-   first with the clean setup (Windows audio enhancements and Dolby Atmos for
-   Headphones off; "recorded − file" constant within ~0.5 dB), then record
-   the calibration song, keep it as `testing/calibration/recording_4.wav`
-   (48 kHz), and write the comparison script (onset alignment from the
-   marker beats and `manifest.json`, then per-section RMS envelope and
-   spectrum against `render`'s output) under `testing/calibration/`.
+   `calibration_params.yaml`, `manifest.json`), `chain_test.wav`,
+   `chain_test.txt`, and **`calibration_recording_3_clean.mkv`**: the third
+   calibration recording above (clean chain, OBS, 104.7 s, 48 kHz stereo),
+   copied from the user's OBS folder. **It is the Stage 2 reference; no new
+   recording is needed.** Extract its audio with
+   `ffmpeg -i calibration_recording_3_clean.mkv -map 0:a:0 -ac 1 -ar 48000
+   -c:a pcm_f32le calibration_recording_3_clean.wav`, and remember the
+   capture chain's constant +3.01 dB (subtract it for absolute levels;
+   ratios within the recording are exact) and that its first note started
+   ~55 ms late (align on the marker beats, not on time 0).
+   The other OBS recordings from 2026-11-20 are still only in the user's
+   `OneDrive\Videos` folder, named `OLD_2026-11-20 HH-MM-SS.mkv`. Going by
+   time and length (not checked by ear): 22-13-24 (55.5 s) the range test,
+   23-05-25 and 23-15-33 (103.3 s) calibration recordings 1 and 2 (levels
+   unusable), 23-34-09 (30.0 s) the compressed chain test, 23-43-09 (24.7 s)
+   the clean chain test, 23-50-41 recording 3 (the one copied here).
+   **Not written yet:** the comparison script. Put it under
+   `testing/calibration/`: align onsets from the marker beats and
+   `manifest.json`, then compare each section's RMS envelope and spectrum
+   with `render`'s output of `calibration.ts`.
    Expect several "slightly off"
    rounds. Optionally automate recording later (Playwright + a `MediaRecorder`
    on the page's audio), but don't block on it.
