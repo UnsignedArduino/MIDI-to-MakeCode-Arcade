@@ -5,7 +5,7 @@ the `midi2mkcd` repo (branch `render-features`, cut from `main` after the
 `cli-refactor` branch was merged) that has **only this file** as design
 context, plus the repo itself and its `CLAUDE.md`.
 
-It covers four new commands and one new flag:
+It covers four new commands, one new flag and compressed output formats:
 
 | Command / flag              | What it does                                                        |
 | --------------------------- | ------------------------------------------------------------------- |
@@ -14,10 +14,11 @@ It covers four new commands and one new flag:
 | `tune replace/sample --wav` | Write the tuning output as a WAV instead of pasting into Arcade.     |
 | `midi2mkcd params soundfont`| Instrument params YAML → SF2 SoundFont, to use in a MIDI editor.     |
 | `midi2mkcd params fit`      | Optimize params so an instrument sounds like a real SoundFont instrument (stretch goal). |
+| Compressed output (`compress` extra) | FLAC / Ogg Vorbis / Opus / MP3 for `render` and `tune ... --wav`; SF3 (Vorbis-compressed SF2) for `params soundfont`. Optional dependency. |
 
 Suggested order: `recover-midi`, then the synthesizer (with its validation
 harness), then `render` and `tune ... --wav`, then `params soundfont`, then
-`params fit`, and **last of all** two-layer instruments (`params fit --layers 2`,
+compressed output (section 9), then `params fit`, and **last of all** two-layer instruments (`params fit --layers 2`,
 section 6), an even-more-stretch goal to be designed in detail only when
 everything else is done. Each is its own commit (or several). Apart from the
 `midiDrumNoteMap` fix (section 3), the range-splitting fix (open question 8),
@@ -34,7 +35,8 @@ conversion algorithm or the existing golden outputs.
 | Synthesizer Stage 2 + `render` (section 4) | **Done** (2026-11-23, branch `render-features`) | numpy `audio` extra, `synthesize` / `render_song` / `to_wav_bytes`, `midi2mkcd render` (tqdm progress bar, speed log line), tests, README/CLAUDE.md. Speeding it up is deferred. Checked against calibration recording 3 with `testing/calibration/analysis/compare.py`: matches to ~0.1 dB. See "Stage 2 status" in section 4. |
 | `tune replace/sample --wav`     | **Done** (2026-11-23, branch `render-features`) | `audio.songs_events` (songs 1 s apart, Stage 1), `tuning.melodic_samples` / `drum_samples` (the sampler's `ConversionResult`s), `cli._write_wav` shared with `render`. The `--wav` vs `-o`/`--copy`/`-f` check is in `main` (exit 2), not an argparse group, since `-o` and `--copy` go together. `tune sample --wav` logs e.g. `0:04 program 41 (Viola)`. No `--rate`/`--volume`/`--no-velocity` on `tune`: use `render` on the text output for those. |
 | `params soundfont` (section 5)  | **Done** (2026-11-23, branch `render-features`) | `soundfont.py` (`build_soundfont`, `estimate_size`, `write_sf2`), `midi2mkcd params soundfont`, `tests/unit/test_soundfont.py` with an independent reader (`tests/helpers.py::read_sf2`). Bundled params at `--step 1`: 12,477 samples, 354 MB, ~13 s. Heard by the user in SpessaSynth at `--step 3` (146 MB, estimate 158 MB): "sounds great and almost identical" to Arcade. See "Status" at the top of section 5. |
-| `params fit` (section 6)        | **Next** | |
+| Compressed output (section 9)   | **Next** | Optional `compress` extra (`soundfile`). Designed 2026-11-23; nothing written yet. |
+| `params fit` (section 6)        | Not started (after section 9) | |
 | Two-layer instruments           | Deferred (last) | |
 
 Facts marked **(verified)** were read from the upstream source at the commits
@@ -1426,7 +1428,7 @@ working).
    sounds almost identical to Arcade in SpessaSynth, by ear. Not measured,
    and not tried in FluidSynth; revisit only if another player sounds off.
 6. **Dependency wheels for Python 3.14** (numpy, scipy, cma, any SF2 test
-   reader). **numpy: answered** (2026-11-23): numpy 2.5.5 has cp314 wheels
+   reader, soundfile for section 9). **numpy: answered** (2026-11-23): numpy 2.5.5 has cp314 wheels
    and is now the `audio` extra and in the dev group. Still to confirm with
    `uv add` when added: scipy and cma (the `fit` extra; cma is pure Python)
    and any SF2 test reader. (The Pyodide half of this question is moot while
@@ -1463,3 +1465,141 @@ working).
 - A waveform-0 instruction is a silent rest, not the end of the buffer.
 - Song ticks are 20 ms in the simulator, not 20.833 ms (setInterval
   truncation), so songs play 4% fast.
+
+---
+
+## 9. Compressed output (`compress` extra): FLAC/Ogg/Opus/MP3 and SF3
+
+Uncompressed output is large: a 3-minute `render` at 48 kHz is ~17 MB of
+WAV, and `params soundfont --step 3` with the bundled params is ~150 MB
+(`--step 1`: 354 MB). Add compressed formats through **`soundfile`**
+(libsndfile, whose wheels bundle the codecs) as a new **optional** extra.
+WAV and SF2 stay the defaults, are still written with the stdlib, and must
+keep working without it.
+
+Measured on the `--step 3` SF2 (2026-11-23, before this feature): of the
+150 MB, loop sections are 71 MB, attack + decay before the loops 61 MB,
+one-shots and drums ~17 MB; exact duplicate samples only 4 MB (3%, not worth
+deduplicating); zlib level 6 gives 67 MB. Vorbis usually gets ~10:1, so an
+SF3 of ~15 MB is the expectation (unverified).
+
+### Dependency
+
+- New extra in `pyproject.toml`: `compress = ["soundfile>=…"]` (pin with
+  `uv add --optional compress soundfile`; also add it to the dev group so
+  tests run). soundfile needs numpy, which the `audio` extra already brings;
+  `compress` without `audio` is useless, so either make `compress` include
+  numpy or say "needs `audio` too" in the error message. Pick one.
+- **Python 3.14 (open question 6):** soundfile's wheels are tagged
+  `py2.py3-none-<platform>` (cffi ABI mode, libsndfile loaded at runtime), so
+  they shouldn't depend on the Python version. Confirm with `uv add` on
+  Windows, and check CI (Ubuntu, Windows, macOS) installs it.
+- **Pyodide:** soundfile is very likely unavailable there (its wheels ship a
+  native libsndfile for desktop platforms only; Pyodide doesn't ship its
+  own build as far as known). Requirement: everything except the
+  compressed formats must work without soundfile, as with numpy today.
+  - Import soundfile **only inside the encoding functions**; a missing
+    import raises `MissingDependencyError('... pip install
+    "midi2mkcd[compress]"')`, like `audio._numpy()`.
+  - Extend `tests/unit/test_import_hygiene.py` (its loop over `numpy`,
+    `scipy`, `cma`, `tqdm`) with `soundfile`: importing `midi2mkcd`,
+    `midi2mkcd.audio`, `midi2mkcd.soundfont` and `midi2mkcd.cli` must not
+    import it.
+  - A future web page could instead get raw samples from Python and encode
+    in the browser (WebCodecs `AudioEncoder` does Opus; Vorbis for SF3
+    would need a JS/WASM encoder). Out of scope now.
+
+### Formats (check against the installed libsndfile)
+
+libsndfile can write many formats; only these are worth exposing:
+
+| Extension | soundfile format / subtype | Kind | Use |
+| --- | --- | --- | --- |
+| `.wav` | (stdlib `wave`, as now) | PCM | Default; no extra needed. |
+| `.flac` | `FLAC` / `PCM_16` | lossless, ~40–60% | Exact samples; good default for "smaller but identical". |
+| `.ogg` | `OGG` / `VORBIS` | lossy, ~10% | Also the SF3 sample codec. |
+| `.opus` | `OGG` / `OPUS` | lossy, ~5–10% | **Only 8/12/16/24/48 kHz**: reject other `--rate`s with a clear error (no resampling). |
+| `.mp3` | `MP3` / `MPEG_LAYER_III` | lossy, ~10% | Needs libsndfile ≥ 1.1 in the wheel: check `soundfile.available_formats()` at runtime and raise a clear error if missing. |
+
+Verify the exact format/subtype names and that each one writes to a
+`BytesIO` (`soundfile.write(buf, data, rate, format=..., subtype=...)`);
+libsndfile's virtual I/O should handle it.
+
+### Library
+
+- `audio.py`: keep `to_wav_bytes` (stdlib). Add
+  `to_audio_bytes(samples, rate, fmt, *, quality=None) -> bytes`, where
+  `fmt` is `"wav" | "flac" | "ogg" | "opus" | "mp3"`; `"wav"` calls
+  `to_wav_bytes`, the rest import soundfile inside. Clip to ±1 with the same
+  WARNING as `to_wav_bytes` (share that code) before encoding.
+- `quality`: 0.0–1.0, higher = better/bigger, default chosen per format
+  (e.g. Vorbis ~0.6–0.7). soundfile ≥ 0.12 has `compression_level` (0–1,
+  libsndfile's `SFC_SET_COMPRESSION_LEVEL`; for Vorbis it maps to
+  1 − quality) and `bitrate_mode` for MP3/Opus. **Check the exact mapping**
+  for each format before documenting it. For FLAC, `quality` only changes
+  speed vs size (still lossless); say so.
+- A helper `audio_format_for(path) -> str` mapping extensions, raising
+  `ValueError` for unknown ones; the CLI turns that into a usage error.
+
+### CLI
+
+- `render -o OUT`: format from the extension (`.wav .flac .ogg .opus .mp3`).
+  Unknown extension → usage error (exit 2) listing the supported ones. Add
+  `--quality Q` (0–1; ignored for WAV with a DEBUG note, or rejected: pick
+  one).
+- `tune replace/sample --wav OUT`: same extension rule. Consider renaming
+  the flag to `--audio` and keeping `--wav` as an alias (argparse accepts
+  both option strings on one argument); `main`'s clash check with
+  `-o`/`--copy`/`-f` stays.
+- `_write_wav` in `cli.py` becomes format-aware (it already handles the
+  progress bar and speed log line for both commands).
+
+### SF3 (`params soundfont`)
+
+SF3 is the SF2 layout with each sample stored as its own Ogg Vorbis stream
+(MuseScore's format; read by FluidSynth, MuseScore and SpessaSynth).
+`-o x.sf3` (or `--sf3`) writes it; `.sf2` stays uncompressed. Details to
+**verify against a reader's source** (FluidSynth `sffile.c` and SpessaSynth)
+before trusting:
+
+- `ifil` version 3.x (check what MuseScore writes; readers mostly key off
+  the sample-type flag).
+- `smpl` holds the concatenated Ogg files; each `shdr` `dwStart`/`dwEnd` are
+  **byte** offsets of that sample's Ogg stream in `smpl`; no 46-point zero
+  guard.
+- `dwStartloop`/`dwEndloop` are in **decoded sample points relative to the
+  sample's start** (not absolute as in SF2).
+- `sfSampleType` gets the compressed flag (`0x10`) in addition to mono (1).
+- Encode each sample from its float data at the soundfont's rate; Vorbis
+  keeps the exact length (granule positions), so loop points stay valid,
+  but lossy coding can add a tiny click at the loop wrap: listen to a few
+  looped notes.
+- Refactor `write_sf2` so the smpl/shdr part is pluggable (PCM vs Vorbis)
+  rather than duplicating the writer; `build_soundfont` gets a
+  `compressed: bool` (or format) option and `quality`.
+- `estimate_size` (and its INFO line) should say the estimate is for
+  uncompressed data, or divide by an observed ratio, when writing SF3.
+
+### Tests (skip when soundfile isn't installed)
+
+- `pytest.importorskip("soundfile")` in the new tests, so CI without the
+  extra still passes; with the dev group installed they run.
+- FLAC round trip: decode with soundfile, equal to the PCM `to_wav_bytes`
+  writes (lossless).
+- Ogg/Opus/MP3: decode, same length (± codec padding for MP3/Opus) and high
+  correlation / similar RMS with the input.
+- Opus at a non-Opus rate and an unknown extension → errors; missing
+  soundfile (`monkeypatch.setitem(sys.modules, "soundfile", None)`) →
+  `MissingDependencyError`, and WAV/SF2 still work.
+- SF3: extend `tests/helpers.py::read_sf2` to handle compressed samples
+  (decode each Ogg stream with soundfile), then check presets, zones and
+  loop points as for SF2, and that decoded samples are close to the SF2's.
+- CLI: `render -o x.flac`, `tune replace --wav x.ogg`, `params soundfont -o
+  x.sf3`, usage errors.
+- Then by ear: load the SF3 in SpessaSynth next to the SF2 (the user's
+  check for section 5) and compare.
+
+### Docs
+
+README (install line for the new extra, the format table, SF3), CLAUDE.md
+(commands, extras, `audio.to_audio_bytes`), this plan's status table.
