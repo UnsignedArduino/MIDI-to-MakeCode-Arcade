@@ -16,7 +16,7 @@ from argparse import (
 from collections.abc import Callable
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, TextIO
 
 from midi2mkcd import __version__, audio, render, soundfont, tuning
 from midi2mkcd.api import (
@@ -101,6 +101,27 @@ def _velocity_layers_arg(value: str) -> int:
     return number
 
 
+class _ProgressAwareHandler(logging.StreamHandler[TextIO]):
+    """
+    A stderr handler that doesn't break tqdm progress bars: once tqdm is
+    imported (so a bar may be on screen), records go through ``tqdm.write``,
+    which clears the bars, prints the line and redraws them below it.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        tqdm_module = sys.modules.get("tqdm")
+        if tqdm_module is None:
+            super().emit(record)
+            return
+        try:
+            tqdm_module.tqdm.write(self.format(record), file=self.stream)
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:  # noqa: BLE001 - as StreamHandler.emit does
+            self.handleError(record)
+
+
 def configure_logging(level: int) -> None:
     """
     Send the package's log records to stderr at the given level, so stdout only
@@ -113,7 +134,7 @@ def configure_logging(level: int) -> None:
     package_logger = logging.getLogger("midi2mkcd")
     if _cli_log_handler is not None:
         package_logger.removeHandler(_cli_log_handler)
-    handler = logging.StreamHandler(stream=sys.stderr)
+    handler = _ProgressAwareHandler(stream=sys.stderr)
     handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
