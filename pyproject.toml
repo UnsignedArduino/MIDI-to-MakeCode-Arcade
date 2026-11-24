@@ -21,13 +21,15 @@ midi2mkcd = "midi2mkcd.cli:main"
 optional = [
     "pyperclip>=1.11.0",
 ]
+# numpy and soundfile bounds are the oldest versions tested, kept low so
+# Pyodide's bundled numpy (2.4.6) and soundfile (0.12.1) satisfy them
 audio = [
-    "numpy>=2.5.5",
+    "numpy>=2.3.2",
     "tqdm>=4.70.1",
 ]
 compress = [
-    "numpy>=2.5.5",
-    "soundfile>=0.14.0",
+    "numpy>=2.3.2",
+    "soundfile>=0.12.1",
 ]
 
 [tool.hatch.version]

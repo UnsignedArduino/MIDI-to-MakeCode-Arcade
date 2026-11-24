@@ -20,6 +20,7 @@ Not re-exported from the package root.
 from __future__ import annotations
 
 import functools
+import inspect
 import io
 import logging
 import math
@@ -263,6 +264,15 @@ def _soundfile() -> Any:
     except ImportError:
         raise MissingDependencyError(SOUNDFILE_INSTALL_ERROR) from None
     return soundfile
+
+
+def _has_compression_level(sf: Any) -> bool:
+    """Whether `soundfile.write` takes `compression_level` (soundfile >= 0.13;
+    Pyodide ships 0.12.1, whose libsndfile still writes every format)."""
+    try:
+        return "compression_level" in inspect.signature(sf.write).parameters
+    except TypeError, ValueError:
+        return False
 
 
 def _parse_instructions(buf: bytes) -> list[_Instruction]:
@@ -736,6 +746,12 @@ def check_audio_format(
             f"the installed libsndfile ({sf.__libsndfile_version__}) can't write "
             f"{fmt}; upgrade soundfile"
         )
+    if quality is not None and not _has_compression_level(sf):
+        logger.warning(
+            f"Quality is ignored: soundfile {sf.__version__} can't set a "
+            "compression level (needs soundfile >= 0.13), so libsndfile's "
+            "default is used"
+        )
 
 
 def to_audio_bytes(
@@ -754,7 +770,9 @@ def to_audio_bytes(
     :param quality: 0-1, higher is better and bigger: libsndfile's compression
      level is ``1 - quality``. Default `DEFAULT_QUALITY` for the lossy formats.
      For FLAC it only trades encoding speed against size (default:
-     libsndfile's); for WAV it is ignored.
+     libsndfile's); for WAV it is ignored. soundfile < 0.13 (as in Pyodide)
+     can't set it: libsndfile's default is used, with a WARNING if a quality
+     was given.
     :raises ValueError, MissingDependencyError: As `check_audio_format`.
     """
     check_audio_format(fmt, rate, quality)
@@ -774,7 +792,9 @@ def _encode(np_: Any, data: Any, rate: int, fmt: str, quality: float | None) -> 
     if fmt in _LOSSY_FORMATS and quality is None:
         quality = DEFAULT_QUALITY
     kwargs: dict[str, float] = {}
-    if quality is not None:
+    # Older soundfile (e.g. Pyodide's) can't take it: libsndfile's default then
+    # (`check_audio_format` warns when a quality was asked for)
+    if quality is not None and _has_compression_level(sf):
         level = 1.0 - quality
         if fmt == "mp3":
             level = min(level, _MP3_MAX_COMPRESSION_LEVEL)

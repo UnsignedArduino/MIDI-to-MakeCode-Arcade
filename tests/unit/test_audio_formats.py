@@ -11,6 +11,7 @@ import pytest
 
 from midi2mkcd.audio import (
     AUDIO_FORMATS,
+    _has_compression_level,
     audio_format_for,
     check_audio_format,
     to_audio_bytes,
@@ -125,11 +126,49 @@ def test_lossy_formats_keep_length_and_shape(fmt: str, rate: int) -> None:
 
 @pytest.mark.parametrize("fmt", ["ogg", "opus", "mp3"])
 def test_quality_trades_size(fmt: str) -> None:
-    pytest.importorskip("soundfile")
+    sf = pytest.importorskip("soundfile")
+    if not _has_compression_level(sf):
+        pytest.skip(f"soundfile {sf.__version__} can't set a compression level")
     samples = tone(2.0)
     rate = 44100 if fmt == "mp3" else RATE
     sizes = [len(to_audio_bytes(samples, rate, fmt, quality=q)) for q in (0, 0.5, 1)]
     assert sizes[0] < sizes[1] < sizes[2]
+
+
+@pytest.mark.parametrize("fmt", ["flac", "ogg", "opus", "mp3"])
+def test_old_soundfile_without_compression_level(
+    fmt: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """soundfile < 0.13 (Pyodide's 0.12.1) has no `compression_level`: encode
+    with libsndfile's default, warning only when a quality was asked for."""
+    sf = pytest.importorskip("soundfile")
+    real_write = sf.write
+
+    def old_write(
+        file: Any,
+        data: Any,
+        samplerate: int,
+        subtype: str | None = None,
+        endian: str | None = None,
+        format: str | None = None,
+        closefd: bool = True,
+    ) -> None:
+        real_write(file, data, samplerate, subtype, endian, format, closefd)
+
+    monkeypatch.setattr(sf, "write", old_write)
+    rate = 44100 if fmt == "mp3" else RATE
+    samples = tone(0.5, rate)
+    with caplog.at_level(logging.WARNING, logger="midi2mkcd"):
+        data = to_audio_bytes(samples, rate, fmt)
+    assert "Quality is ignored" not in caplog.text
+    decoded, decoded_rate = decode(data)
+    assert decoded_rate == rate
+    assert len(decoded) == len(samples)
+    with caplog.at_level(logging.WARNING, logger="midi2mkcd"):
+        with_quality = to_audio_bytes(samples, rate, fmt, quality=0.9)
+    assert "Quality is ignored" in caplog.text
+    # Same encoder settings (Ogg's random stream serial makes the bytes differ)
+    np.testing.assert_array_equal(decode(with_quality)[0], decoded)
 
 
 def test_clipping_warns_for_compressed_formats(
