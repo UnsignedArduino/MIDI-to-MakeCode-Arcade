@@ -9,13 +9,14 @@ Yamaha XG SysEx commands.
 
 1. Download and install Python (>=3.14) and the `uv` package manager.
 2. Clone this repo.
-3. Run `uv sync` to create a virtual environment and install all dependencies.
-   Use `uv sync --extra optional` if you also want `--copy` (copy the output to
-   the clipboard, which needs `pyperclip`), `uv sync --extra audio` for
-   `render`, `tune ... --audio` and `params soundfont` (which need `numpy`, and `tqdm` for the
-   progress bar), and `uv sync --extra compress` to also write FLAC, Ogg, Opus
-   and MP3 audio and SF3 SoundFonts (which need `soundfile`). The dev
-   environment `uv sync` makes already has all of them.
+3. Run `uv sync` to create a virtual environment and install all dependencies. 
+   1. `uv sync --extra optional` if you also want `--copy` (copy the output to 
+      the clipboard, which needs `pyperclip`)
+   2. `uv sync --extra audio` for `render`, `tune ... --audio` and 
+      `params soundfont` (which need `numpy`, and `tqdm` for the progress bar)
+   3. `uv sync --extra compress` to also write FLAC, Ogg, Opus and MP3 audio 
+      and SF3 SoundFonts (which need `soundfile`). 
+   4. The dev environment includes all of the above.
 
 ## Usage
 
@@ -25,7 +26,7 @@ subcommand:
 
 * `convert`: convert a MIDI file to Arcade code.
 * `recover-midi`: turn converted Arcade code back into a MIDI file (lossy; see
-  [Recovering a lost MIDI file](#recovering-a-lost-midi-file)).
+  [Recovering a MIDI file](#recovering-a-midi-file)).
 * `render`: play a MIDI file or converted song into an audio file, sounding like
   the MakeCode Arcade simulator (see
   [Listening without Arcade](#listening-without-arcade)).
@@ -45,7 +46,7 @@ but the MakeCode Arcade song playback will ignore it - per chord velocity is
 only available in beta.~~ Per-chord velocity is now generally available in 
 MakeCode Arcade!
 
-### Example commands
+### Converting MIDI files to MakeCode Arcade Songs
 
 To convert the MIDI file `Never Gonna Give You Up.mid`:
 
@@ -91,17 +92,55 @@ top with the output of this command:
 uv run midi2mkcd convert "Never Gonna Give You Up.mid" -f code_extra
 ```
 
-`-f code_extra` writes out extra information that the visualizer above can use
+`-f code_extra` writes out extra variables that the visualizer above can use
 to make the visuals more accurate.
 [Here](https://arcade.makecode.com/17599-66404-81028-76431) is an example. In
-the visualizer, you can press B to switch
-through the main interface, the track viewer (use arrow keys to highlight a
-track if desired), and the lyric viewer. Any lyrics (lyric meta message only so
-far) in the MIDI file will also be exported.
+the visualizer, you can press B to switch through the main interface, the track 
+viewer (use arrow keys to highlight a track if desired), and the lyric viewer. 
+Any lyrics (lyric meta message only so far) in the MIDI file will also be 
+exported.
 
 Add `-v` to any command for debug logging (and full tracebacks for errors).
 
-### Recovering a lost MIDI file
+#### Simulator crash risk (WebAudio memory leak)
+
+Long or dense songs can crash the MakeCode Arcade **browser simulator** (the
+"Aw, Snap!" page). It seems like the simulator's WebAudio playback leaks a few
+KB of memory per note (pxtsim keeps every note's audio nodes alive for the
+whole simulator session), and Chrome kills the renderer process when it runs
+out of memory.
+
+The limit is **not a fixed note count** — it depends on how much memory the
+rest of your game uses (sprites, arrays, etc.), which browser you use, and how
+many notes the simulator has already played. Measured on a modest test game
+(Aug 2026): crashes started around 24,000–24,500 cumulative notes in Chrome,
+but a memory-heavy game may crash earlier, while Firefox tolerates more (at the
+cost of worse performance). Notes from previous plays or other songs in the
+same page session all count toward the limit; **reloading the simulator resets
+it**.
+
+The converter logs a warning when a song has 15,000 or more note events.
+
+#### MIDI standards/features supported
+
+Standards:
+
+* [General MIDI 1](https://en.wikipedia.org/wiki/General_MIDI) melodic
+  instruments (0-127) and standard drum kit notes (35-81)
+* [General MIDI 2](https://en.wikipedia.org/wiki/General_MIDI_Level_2) extended
+  drum note range (27-87) on the standard drum kit only
+* Roland GS/Yamaha XG SysEx messages for track switching to standard drums only
+
+Features:
+
+* Tempo changes
+* MIDI ports and channels
+* Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
+  track to a drum track and back (will only use the standard drum kit notes)
+* Per note velocity (stored per chord in the song)
+* Lyric meta messages
+
+### Recovering a MIDI file
 
 If you only have the converted code, `recover-midi` turns it back into a MIDI
 file (`-o` is required):
@@ -156,50 +195,9 @@ versions did), and `--rate` sets the sample rate (default 48000 Hz).
 
 Like the simulator, a converted song plays about 4% fast (its ticks are 20 ms
 apart instead of 20.83 ms). Checked against a recording of the simulator, the
-render matches to within about 0.1 dB in level, tone and timing. The simulator
-itself sometimes starts a short sound a few ms late or cuts it a few ms early,
-and that random timing isn't copied. Loud passages that would clip are clipped
-in the output with a warning. Rendering takes a while on long songs (roughly 300
-sounds per second), so a progress bar is shown on stderr when it's a terminal
-and `tqdm` is installed (it comes with the `audio` extra).
-
-### Simulator crash risk (WebAudio memory leak)
-
-Long or dense songs can crash the MakeCode Arcade **browser simulator** (the
-"Aw, Snap!" page). It seems like the simulator's WebAudio playback leaks a few
-KB of memory per note (pxtsim keeps every note's audio nodes alive for the
-whole simulator session), and Chrome kills the renderer process when it runs
-out of memory.
-
-The limit is **not a fixed note count** — it depends on how much memory the
-rest of your game uses (sprites, arrays, etc.), which browser you use, and how
-many notes the simulator has already played. Measured on a modest test game
-(Aug 2026): crashes started around 24,000–24,500 cumulative notes in Chrome,
-but a memory-heavy game may crash earlier, while Firefox tolerates more (at the
-cost of worse performance). Notes from previous plays or other songs in the
-same page session all count toward the limit; **reloading the simulator resets
-it**.
-
-The converter logs a warning when a song has 15,000 or more note events.
-
-### MIDI standards/features supported
-
-Standards:
-
-* [General MIDI 1](https://en.wikipedia.org/wiki/General_MIDI) melodic
-  instruments (0-127) and standard drum kit notes (35-81)
-* [General MIDI 2](https://en.wikipedia.org/wiki/General_MIDI_Level_2) extended
-  drum note range (27-87) on the standard drum kit only
-* Roland GS/Yamaha XG SysEx messages for track switching to standard drums only
-
-Features:
-
-* Tempo changes
-* MIDI ports and channels
-* Common control changes and Roland GS/Yamaha XG SysEx messages to switch a
-  track to a drum track and back (will only use the standard drum kit notes)
-* Per note velocity (stored per chord in the song)
-* Lyric meta messages
+render matches to within about 0.1 dB in level, tone and timing. A progress bar 
+is shown on stderr when it's a terminal and `tqdm` is installed (it comes with 
+the `audio` extra).
 
 ### Defining your own instrument parameter file
 
@@ -302,7 +300,7 @@ uv run midi2mkcd tune replace "basic_test_3.mid" --drums 38 -p "my_params.yaml" 
 uv run midi2mkcd tune sample "basic_test_3.mid" --drums 35-40 -p "my_params.yaml" --allow-incomplete --copy
 ```
 
-#### Hearing the instruments in a MIDI editor
+### Hearing the instruments in a MIDI editor
 
 `params soundfont` renders every instrument in a params file the way the
 simulator plays it and writes an SF2 SoundFont, so you can hear roughly what
