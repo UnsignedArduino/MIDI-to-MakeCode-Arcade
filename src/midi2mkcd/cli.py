@@ -74,6 +74,13 @@ def _positive_int(value: str) -> int:
     return number
 
 
+def _jobs_arg(value: str) -> int | None:
+    """A positive number of worker processes, or "auto" (None) for one per CPU."""
+    if value.lower() == "auto":
+        return None
+    return _positive_int(value)
+
+
 def _volume_arg(value: str) -> int:
     try:
         number = int(value)
@@ -250,6 +257,7 @@ def build_parser() -> ArgumentParser:
                    "that ignore the velocity section do.")  # fmt: skip
     _add_quality(p, "Ogg, Opus and MP3", "For FLAC it only trades encoding "
                  "speed against size; ignored for WAV.")  # fmt: skip
+    _add_jobs(p, "Render")
     _add_binary_output(p, "Audio file to write: .wav, .flac, .ogg, .opus or .mp3")
 
     tune = _group(commands, "tune", "Tools for auditioning instrument parameters "
@@ -350,6 +358,7 @@ def build_parser() -> ArgumentParser:
                    help="Skip incomplete or invalid entries in the params file "
                    "instead of failing.")  # fmt: skip
     _add_quality(p, "SF3 samples", "Ignored for SF2.")
+    _add_jobs(p, "Render (and for SF3, encode) samples")
     _add_binary_output(p, "SoundFont to write: SF3 if it ends in .sf3, else SF2")
     return parser
 
@@ -394,6 +403,15 @@ def _add_audio(p: ArgumentParser, what: str) -> None:
                    "of writing code. The format comes from the extension: .wav, "
                    ".flac, .ogg, .opus or .mp3. Not with -o, --copy or -f. Needs "
                    'numpy: pip install "midi2mkcd[audio]".')  # fmt: skip
+    _add_jobs(p, "With --audio, render")
+
+
+def _add_jobs(p: ArgumentParser, what: str) -> None:
+    p.add_argument("-j", "--jobs", type=_jobs_arg, nargs="?", const=None, default=1,
+                   metavar="N",
+                   help=f"{what} in N worker processes. -j alone (or -j auto) "
+                   "uses one per CPU, like a compiler's -j. Default: 1, which "
+                   "uses no worker processes.")  # fmt: skip
 
 
 def _add_quality(p: ArgumentParser, which: str, note: str) -> None:
@@ -456,7 +474,9 @@ def _run_render(args: Namespace) -> int:
     events = audio.song_events(
         song, use_velocity=not args.no_velocity, global_volume=args.volume
     )
-    return _write_audio(events, args.output, fmt, args.rate, args.quality)
+    return _write_audio(
+        events, args.output, fmt, args.rate, args.quality, jobs=args.jobs
+    )
 
 
 def _audio_format(
@@ -478,12 +498,14 @@ def _write_audio(
     fmt: str,
     rate: int = audio.DEFAULT_RATE,
     quality: float | None = None,
+    *,
+    jobs: int | None = 1,
 ) -> int:
     """Synthesize the events with a progress bar and a speed log line, and write
     them as an audio file in `fmt`."""
     started = time.perf_counter()
     with _ProgressBar("Rendering", "sound") as progress:
-        samples = audio.synthesize(events, rate, progress=progress)
+        samples = audio.synthesize(events, rate, progress=progress, jobs=jobs)
     logger.info(
         _render_summary(len(samples) / rate, rate, time.perf_counter() - started)
     )
@@ -571,7 +593,9 @@ def _run_tune_replace(args: Namespace) -> int:
         drums=args.drums,
     )
     if fmt is not None:
-        return _write_audio(audio.song_events(result.song), args.audio, fmt)
+        return _write_audio(
+            audio.song_events(result.song), args.audio, fmt, jobs=args.jobs
+        )
     return _emit(result.to_typescript(args.format or "code"), args.output, args.copy)
 
 
@@ -597,7 +621,7 @@ def _run_tune_sample(args: Namespace) -> int:
             else f"drum note {number} ({drum_note_name(number)})"
         )
         logger.info(f"{_minutes_seconds(start_ms)} {name}")
-    return _write_audio(events, args.audio, fmt)
+    return _write_audio(events, args.audio, fmt, jobs=args.jobs)
 
 
 def _minutes_seconds(ms: float) -> str:
@@ -654,6 +678,7 @@ def _run_params_soundfont(args: Namespace) -> int:
             options,
             comment=f"Made by midi2mkcd {__version__} from {source}",
             progress=progress,
+            jobs=args.jobs,
         )
     return _emit_bytes(data, args.output)
 

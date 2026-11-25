@@ -32,7 +32,7 @@ Tests compare against golden files in `tests/fixtures/golden/`, generated from `
 
 A library with a thin CLI. `cli.py` only parses arguments, reads files, configures logging and calls one library function per command; binary outputs require `-o` and never go to stdout. Public entry point is `api.py::convert`, re-exported from the package root. Other modules (not re-exported): `tuning.py` (tune tools), `song_to_midi/` (reverse conversion), `render.py` (all TypeScript/report text), `audio.py` (song -> simulator play instructions -> samples, mimicking `pxtsim/sound/playInstructions.ts`), `soundfont.py` (hand-written SF2/SF3 writer), `errors.py` (`Midi2MkcdError` hierarchy).
 
-Optional extras: numpy (+ tqdm) is `audio`, soundfile is `compress`. Import them only inside the functions that need them; a missing one raises `MissingDependencyError` naming the extra. The library never prints; long work reports through a `progress(done, total)` callback.
+Optional extras: numpy (+ tqdm) is `audio`, soundfile is `compress`. Import them only inside the functions that need them; a missing one raises `MissingDependencyError` naming the extra. The library never prints; long work reports through a `progress(done, total)` callback. `synthesize` and `build_soundfont` take `jobs` (CLI `-j`) for worker processes via `utils/parallel.py`; `jobs=1` (the default) and Pyodide never start a pool, so keep that path serial and unchanged.
 
 The bundled default params are `src/midi2mkcd/resources/instrument_params.yaml` (hand-tuned; its header documents units and waveform IDs).
 

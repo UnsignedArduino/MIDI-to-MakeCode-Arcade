@@ -54,6 +54,7 @@ from midi2mkcd.audio import (
 from midi2mkcd.errors import Midi2MkcdError
 from midi2mkcd.midi_to_song.timeline.processor import pitch_compensation_scale
 from midi2mkcd.utils.gm_names import drum_note_name, melodic_instrument_name
+from midi2mkcd.utils.parallel import check_jobs, resolve_jobs, run_in_processes
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +496,25 @@ def _crossfade_loop(
     return out
 
 
+def _render_sample(
+    sound: Instrument | DrumInstrument,
+    root: int | None,
+    gain: float,
+    options: SoundFontOptions,
+) -> tuple[bytes, int | None, tuple[int, int] | None]:
+    """One SoundFont sample (a melodic `sound` at MIDI note `root`, or a drum
+    with `root` None), encoded: `Sf2Sample`'s data, vorbis_frames and loop.
+    Runs in a worker process with `jobs`."""
+    np_ = _numpy()
+    if isinstance(sound, DrumInstrument):
+        data, loop = _render_drum(np_, sound, gain, options.rate), None
+    else:
+        assert root is not None
+        data, loop = _render_melodic(np_, sound, root, gain, options.rate)
+    encoded, frames = _encode_sample(np_, data, options)
+    return encoded, frames, loop
+
+
 def _render_drum(np_: Any, drum: DrumInstrument, gain: float, rate: int) -> Any:
     buf = drum_instructions(drum, _FULL_VOLUME)
     samples = np_.asarray(synthesize([(0.0, buf)], rate), dtype=np_.float64) * gain
@@ -645,6 +665,7 @@ def build_soundfont(
     name: str = "midi2mkcd Arcade instruments",
     comment: str | None = None,
     progress: ProgressCallback | None = None,
+    jobs: int | None = 1,
 ) -> bytes:
     """
     Render every instrument in the params as an SF2 SoundFont.
@@ -656,13 +677,18 @@ def build_soundfont(
      layers, and the `music.volume()` to match.
     :param progress: Called as ``progress(done, total)`` with the number of
      samples rendered: once with 0, then after each.
+    :param jobs: Worker processes to render (and for SF3, encode) samples in:
+     1 (the default) does it all in this process, with no pool; None means one
+     per CPU. Where processes aren't available (Pyodide) it is always 1. The
+     SoundFont is the same for every `jobs`.
     :raises MissingDependencyError: If numpy isn't installed, or soundfile for
      `options.sf3`.
     :raises Midi2MkcdError: If the file would be over 4 GB.
     """
     options = options or SoundFontOptions()
     options.check()
-    np_ = _numpy()
+    check_jobs(jobs)
+    _numpy()
     if options.sf3:
         check_audio_format("ogg", options.rate, options.quality)
     mapping = _resolve_params(params)
@@ -705,9 +731,10 @@ def build_soundfont(
         if progress is not None:
             progress(done, total)
 
-    samples: list[Sf2Sample] = []
-    instruments: list[Sf2Instrument] = []
-    presets: list[Sf2Preset] = []
+    # Plan every sample (name, root key, zone and what to render) first, so they
+    # can be rendered in any order or in worker processes
+    planned: list[tuple[str, int, int | None, tuple[Any, ...]]] = []
+    zone_plans: list[list[tuple[int, Sf2Zone]]] = []
     for program, instrument in sorted(mapping.melodic_instruments.items()):
         arcade = _arcade_instrument(instrument)
         release = _release_timecents(arcade.amp_envelope.release)
@@ -716,33 +743,25 @@ def build_soundfont(
         for low, high, root in groups:
             for vel_low, vel_high in layers:
                 gain = _melodic_gain(root, k, vel_high, len(layers), options.volume)
-                data, loop = _render_melodic(np_, arcade, root, gain, options.rate)
                 suffix = f" V{vel_high}" if len(layers) > 1 else ""
-                encoded, frames = _encode_sample(np_, data, options)
-                samples.append(
-                    Sf2Sample(
+                zone = Sf2Zone(
+                    sample=len(planned),
+                    key_range=(low, high),
+                    root_key=root,
+                    vel_range=(vel_low, vel_high) if len(layers) > 1 else None,
+                    release_timecents=release,
+                    scale_tuning=0 if pitchless else None,
+                )
+                zones.append((len(planned), zone))
+                planned.append(
+                    (
                         f"P{program:03d} N{root:03d}{suffix}",
-                        encoded,
-                        options.rate,
                         root,
-                        loop,
-                        frames,
+                        None,
+                        (arcade, root, gain, options),
                     )
                 )
-                zones.append(
-                    Sf2Zone(
-                        sample=len(samples) - 1,
-                        key_range=(low, high),
-                        root_key=root,
-                        vel_range=(vel_low, vel_high) if len(layers) > 1 else None,
-                        release_timecents=release,
-                        scale_tuning=0 if pitchless else None,
-                    )
-                )
-                advance()
-        name_ = melodic_instrument_name(program)
-        instruments.append(Sf2Instrument(name_, tuple(zones)))
-        presets.append(Sf2Preset(name_, 0, program, len(instruments) - 1))
+        zone_plans.append(zones)
 
     drum_gain = options.volume / _FULL_VOLUME * 127 / 128
     drum_zones = []
@@ -751,21 +770,54 @@ def build_soundfont(
             logger.warning(f"Drum note {note} has no steps; left out")
             advance()
             continue
-        data = _render_drum(np_, _arcade_drum(drum), drum_gain, options.rate)
-        encoded, frames = _encode_sample(np_, data, options)
-        samples.append(
-            Sf2Sample(f"D{note:03d}", encoded, options.rate, note, vorbis_frames=frames)
-        )
         drum_zones.append(
             Sf2Zone(
-                sample=len(samples) - 1,
+                sample=len(planned),
                 key_range=(note, note),
                 root_key=note,
                 release_timecents=_DRUM_RELEASE_TIMECENTS,
             )
         )
-        logger.debug(f"Rendered drum note {note} ({drum_note_name(note)})")
+        planned.append(
+            (f"D{note:03d}", note, note, (_arcade_drum(drum), None, drum_gain, options))
+        )
+
+    rendered: list[tuple[bytes, int | None, tuple[int, int] | None] | None] = [
+        None
+    ] * len(planned)
+
+    def on_done(index: int, result: tuple[bytes, int | None, Any]) -> None:
+        rendered[index] = result
+        drum_note = planned[index][2]
+        if drum_note is not None:
+            logger.debug(
+                f"Rendered drum note {drum_note} ({drum_note_name(drum_note)})"
+            )
         advance()
+
+    tasks = [task for _, _, _, task in planned]
+    workers = resolve_jobs(jobs, len(tasks))
+    if workers > 1:
+        run_in_processes(_render_sample, tasks, workers, on_done)
+    else:
+        for index, task in enumerate(tasks):
+            on_done(index, _render_sample(*task))
+
+    samples: list[Sf2Sample] = []
+    for (sample_name, root, _, _), result in zip(planned, rendered, strict=True):
+        assert result is not None
+        encoded, frames, loop = result
+        samples.append(
+            Sf2Sample(sample_name, encoded, options.rate, root, loop, frames)
+        )
+    instruments: list[Sf2Instrument] = []
+    presets: list[Sf2Preset] = []
+    for (program, _), zones in zip(
+        sorted(mapping.melodic_instruments.items()), zone_plans, strict=True
+    ):
+        name_ = melodic_instrument_name(program)
+        instruments.append(Sf2Instrument(name_, tuple(zone for _, zone in zones)))
+        presets.append(Sf2Preset(name_, 0, program, len(instruments) - 1))
     if drum_zones:
         instruments.append(Sf2Instrument("Arcade Drum Kit", tuple(drum_zones)))
         presets.append(Sf2Preset("Arcade Drum Kit", DRUM_BANK, 0, len(instruments) - 1))

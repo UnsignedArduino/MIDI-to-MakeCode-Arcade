@@ -22,6 +22,7 @@ from __future__ import annotations
 import functools
 import inspect
 import io
+import itertools
 import logging
 import math
 import struct
@@ -41,6 +42,7 @@ from midi2mkcd.arcade.sim_sequencer import (
 )
 from midi2mkcd.arcade.sim_song import render_drum_instrument, render_instrument
 from midi2mkcd.errors import MissingDependencyError
+from midi2mkcd.utils.parallel import check_jobs, resolve_jobs, run_in_processes
 
 if TYPE_CHECKING:
     import numpy as np
@@ -56,6 +58,9 @@ ProgressCallback = Callable[[int, int], None]
 DEFAULT_RATE = 48000
 # Silence between songs played one after another (`songs_events`)
 DEFAULT_GAP_MS = 1000.0
+# With worker processes, `synthesize` splits the sounds into this many batches
+# per worker, so a slow batch doesn't leave the others idle
+_BATCHES_PER_WORKER = 8
 NUMPY_INSTALL_ERROR = 'audio rendering needs numpy: pip install "midi2mkcd[audio]"'
 SOUNDFILE_INSTALL_ERROR = (
     'compressed audio needs soundfile: pip install "midi2mkcd[compress]"'
@@ -322,6 +327,7 @@ def synthesize(
     rate: int = DEFAULT_RATE,
     *,
     progress: ProgressCallback | None = None,
+    jobs: int | None = 1,
 ) -> NDArray[np.float32]:
     """
     Play sounds the way the simulator does (Web Audio in Chrome), mixed into
@@ -330,7 +336,13 @@ def synthesize(
     :param events: (start ms, play instructions), e.g. from `song_events`.
     :param rate: Sample rate in Hz (the simulator uses its AudioContext's rate).
     :param progress: Called as ``progress(done, total)`` with the number of
-     sounds synthesized so far: once with 0 before the first, then after each.
+     sounds synthesized so far: once with 0 before the first, then after each
+     (after each batch, with worker processes).
+    :param jobs: Worker processes to synthesize in: 1 (the default) does it all
+     in this process, with no pool; None means one per CPU. Where processes
+     aren't available (Pyodide) it is always 1. With more than one, batches of
+     sounds are mixed in a fixed order, so the result is the same for every
+     `jobs` > 1 but can differ from 1's by float rounding.
     :return: Samples, unclipped, long enough for every sound to finish. Sample 0
      is time 0.
     :raises MissingDependencyError: If numpy isn't installed.
@@ -338,21 +350,83 @@ def synthesize(
     np_ = _numpy()
     if rate <= 0:
         raise ValueError(f"rate must be positive, got {rate}")
+    check_jobs(jobs)
+    sounds = []
     notes = []
     end_ms = 0.0
     for start_ms, buf in events:
         schedules, total = _schedule(_parse_instructions(buf))
+        sounds.append((start_ms, buf))
         notes.append((start_ms, schedules, total))
         end_ms = max(end_ms, start_ms + total)
     out = np_.zeros(_first_sample_at(end_ms, rate), dtype=np_.float64)
     if progress is not None:
         progress(0, len(notes))
-    for done, (start_ms, schedules, total) in enumerate(notes, start=1):
-        _render_note(np_, out, start_ms, total, schedules, rate)
-        if progress is not None:
-            progress(done, len(notes))
+    workers = resolve_jobs(jobs, len(notes))
+    if workers > 1:
+        _synthesize_in_processes(out, sounds, rate, workers, progress)
+    else:
+        for done, (start_ms, schedules, total) in enumerate(notes, start=1):
+            _render_note(np_, out, start_ms, total, schedules, rate)
+            if progress is not None:
+                progress(done, len(notes))
     result: NDArray[np.float32] = out.astype(np_.float32)
     return result
+
+
+def _synthesize_in_processes(
+    out: Any,
+    sounds: list[SongEvent],
+    rate: int,
+    workers: int,
+    progress: ProgressCallback | None,
+) -> None:
+    """Mix `sounds` into `out` in batches of sounds close in time, each
+    rendered into its own buffer by `_render_batch` in a worker process. The
+    batches are added to `out` in order (not as they finish), so the result
+    doesn't depend on timing."""
+    order = sorted(range(len(sounds)), key=lambda i: sounds[i][0])
+    count = min(len(order), workers * _BATCHES_PER_WORKER)
+    bounds = [len(order) * b // count for b in range(count + 1)]
+    tasks = [
+        ([sounds[i] for i in order[lo:hi]], rate)
+        for lo, hi in itertools.pairwise(bounds)
+    ]
+    finished: dict[int, tuple[int, Any, int]] = {}
+    next_batch = 0
+    done = 0
+
+    def on_done(index: int, result: tuple[int, Any, int]) -> None:
+        nonlocal next_batch, done
+        finished[index] = result
+        while next_batch in finished:
+            n0, buffer, _ = finished.pop(next_batch)
+            out[n0 : n0 + len(buffer)] += buffer
+            next_batch += 1
+        done += result[2]
+        if progress is not None:
+            progress(done, len(sounds))
+
+    run_in_processes(_render_batch, tasks, workers, on_done)
+
+
+def _render_batch(sounds: list[SongEvent], rate: int) -> tuple[int, Any, int]:
+    """In a worker process: (first sample, float64 samples) of `sounds` mixed,
+    and how many sounds that was."""
+    np_ = _numpy()
+    notes = []
+    n0 = n1 = 0
+    for start_ms, buf in sounds:
+        schedules, total = _schedule(_parse_instructions(buf))
+        notes.append((start_ms, schedules, total))
+        first = _first_sample_at(start_ms, rate)
+        last = _first_sample_at(start_ms + total, rate)
+        n0 = first if len(notes) == 1 else min(n0, first)
+        n1 = last if len(notes) == 1 else max(n1, last)
+    out = np_.zeros(max(0, n1 - n0), dtype=np_.float64)
+    for start_ms, schedules, total in notes:
+        _render_note(np_, out, start_ms, total, schedules, rate, offset=n0)
+    return n0, out, len(sounds)
 
 
 def _first_sample_at(ms: float, rate: int) -> int:
@@ -367,7 +441,9 @@ def _render_note(
     total_ms: float,
     schedules: dict[int, _WaveSchedule],
     rate: int,
+    offset: int = 0,
 ) -> None:
+    """Add the note into `out`, whose index 0 is sample `offset`."""
     n0 = _first_sample_at(start_ms, rate)
     n1 = _first_sample_at(start_ms + total_ms, rate)
     if n1 <= n0 or not schedules:
@@ -383,7 +459,7 @@ def _render_note(
         if wave in _SQUARES:
             gain *= 0.5
         acc += gain * _generator(np_, wave, schedule, t, samples, rate)
-    out[n0:n1] += acc
+    out[n0 - offset : n1 - offset] += acc
 
 
 def _index(np_: Any, t: Any, ms: float) -> int:
@@ -648,11 +724,13 @@ def render_song(
     use_velocity: bool = True,
     global_volume: float = MUSIC_DEFAULT_VOLUME,
     progress: ProgressCallback | None = None,
+    jobs: int | None = 1,
 ) -> NDArray[np.float32]:
     """`synthesize(song_events(song, ...))`: the song as the simulator plays it
-    once, until every sound has finished. `progress` is passed to `synthesize`."""
+    once, until every sound has finished. `progress` and `jobs` are passed to
+    `synthesize`."""
     events = song_events(song, use_velocity=use_velocity, global_volume=global_volume)
-    return synthesize(events, rate, progress=progress)
+    return synthesize(events, rate, progress=progress, jobs=jobs)
 
 
 def to_wav_bytes(samples: NDArray[np.float32], rate: int = DEFAULT_RATE) -> bytes:
