@@ -92,6 +92,8 @@ _POST_LOOP_POINTS = 8  # copies of the loop start after the loop end
 _FULL_VOLUME = 1024  # sequencer volume the samples are rendered at
 _INT16_MAX = 32767
 _MAX_RIFF_BYTES = 0xFFFF_FFFF
+# pdta indices (bags, generators, modulators, sample IDs) are 16-bit WORDs
+_MAX_PDTA_RECORDS = 0xFFFF
 
 # SF2 generator and modulator numbers (SoundFont 2.01 spec, section 8)
 _GEN_INITIAL_FILTER_FC = 8
@@ -195,9 +197,13 @@ def write_sf2(
     Vorbis (`Sf2Sample.vorbis_frames` set).
 
     Every instrument zone gets `ZONE_MODULATORS`, a looped sample loops
-    continuously, and presets have one zone that selects their instrument.
+    continuously, and presets have one zone that selects their instrument. An
+    instrument with more than one zone gets a global zone holding the
+    modulators and the generators all its zones share, so the 16-bit record
+    indices go further (see `instrument_zone_records`).
 
-    :raises Midi2MkcdError: If the file would be too large for RIFF (4 GB).
+    :raises Midi2MkcdError: If the file would be too large for RIFF (4 GB) or
+     have more records than SF2's 16-bit indices reach.
     """
     sf3 = any(sample.vorbis_frames is not None for sample in samples)
     info = _chunk(b"ifil", struct.pack("<HH", *((3, 0) if sf3 else (2, 1))))
@@ -212,22 +218,24 @@ def write_sf2(
         shdr += _name(sample.name) + _add_sample_data(smpl, sample)
     shdr += _name("EOS") + bytes(26)
 
+    sample_info = [(s.original_pitch, s.loop is not None) for s in samples]
+    zone_records = [instrument_zone_records(i, sample_info) for i in instruments]
+    check_record_counts(zone_records, len(samples))
     inst = bytearray()
     ibag = bytearray()
     imod = bytearray()
     igen = bytearray()
     bags = gens = mods = 0
-    for instrument in instruments:
+    for instrument, records in zip(instruments, zone_records, strict=True):
         inst += _name(instrument.name) + struct.pack("<H", bags)
-        for zone in instrument.zones:
+        for zone_gens, zone_mods in records:
             ibag += struct.pack("<HH", gens, mods)
             bags += 1
-            for modulator in ZONE_MODULATORS:
+            for modulator in zone_mods:
                 imod += struct.pack("<HHhHH", *modulator)
-                mods += 1
-            zone_gens = _zone_generators(zone, samples[zone.sample].loop is not None)
-            igen += zone_gens
-            gens += len(zone_gens) // 4
+            mods += len(zone_mods)
+            igen += b"".join(zone_gens)
+            gens += len(zone_gens)
     inst += _name("EOI") + struct.pack("<H", bags)
     ibag += struct.pack("<HH", gens, mods)
     imod += bytes(10)
@@ -300,17 +308,93 @@ def _add_sample_data(smpl: bytearray, sample: Sf2Sample) -> bytes:
     )  # fmt: skip
 
 
-def _zone_generators(zone: Sf2Zone, looped: bool) -> bytes:
-    """keyRange and velRange first, sampleID last, as the spec requires."""
-    out = struct.pack("<HBB", _GEN_KEY_RANGE, *zone.key_range)
+# A zone's records: its generators (4 bytes each) and modulators
+ZoneRecords = tuple[list[bytes], tuple[Sf2Modulator, ...]]
+# Generators that stay in their zone: they say which zone plays
+_LOCAL_GENERATORS = frozenset({_GEN_KEY_RANGE, _GEN_VEL_RANGE, _GEN_SAMPLE_ID})
+
+
+def instrument_zone_records(
+    instrument: Sf2Instrument, sample_info: Sequence[tuple[int, bool]]
+) -> list[ZoneRecords]:
+    """
+    The instrument's zones as written: with more than one zone, a global zone
+    first with `ZONE_MODULATORS` and every generator all the zones have with
+    the same amount, which the zones then leave out (the SF2 spec has zones
+    inherit the global zone's generators and modulators).
+
+    :param sample_info: (original pitch, looped) of each sample, by index.
+    """
+    local = [
+        _zone_generators(zone, *sample_info[zone.sample]) for zone in instrument.zones
+    ]
+    if len(local) < 2:
+        return [([g for _, g in gens], ZONE_MODULATORS) for gens in local]
+    shared = set.intersection(*(set(gens) for gens in local))
+    shared = {(op, g) for op, g in shared if op not in _LOCAL_GENERATORS}
+    global_gens = [g for op, g in local[0] if (op, g) in shared]
+    return [(global_gens, ZONE_MODULATORS)] + [
+        ([g for op, g in gens if (op, g) not in shared], ()) for gens in local
+    ]
+
+
+def check_record_counts(
+    zone_records: Iterable[list[ZoneRecords]], samples: int
+) -> None:
+    """:raises Midi2MkcdError: If SF2's 16-bit indices can't reach every
+    instrument zone, generator, modulator or sample."""
+    bags = gens = mods = 0
+    for records in zone_records:
+        bags += len(records)
+        gens += sum(len(g) for g, _ in records)
+        mods += sum(len(m) for _, m in records)
+    for what, count in (
+        ("instrument zones", bags), ("instrument generators", gens),
+        ("instrument modulators", mods), ("samples", samples),
+    ):  # fmt: skip
+        if count > _MAX_PDTA_RECORDS:
+            raise Midi2MkcdError(
+                f"The SoundFont would have {count} {what}, over SF2's limit of "
+                f"{_MAX_PDTA_RECORDS}; render fewer samples (a larger step, fewer "
+                "velocity layers or a smaller note range)"
+            )
+
+
+def _zone_generators(
+    zone: Sf2Zone, original_pitch: int, looped: bool
+) -> list[tuple[int, bytes]]:
+    """(operator, record) pairs: keyRange and velRange first, sampleID last,
+    as the spec requires. overridingRootKey only if it isn't the sample's
+    original pitch."""
+    out = [(_GEN_KEY_RANGE, struct.pack("<HBB", _GEN_KEY_RANGE, *zone.key_range))]
     if zone.vel_range is not None:
-        out += struct.pack("<HBB", _GEN_VEL_RANGE, *zone.vel_range)
-    out += struct.pack("<Hh", _GEN_OVERRIDING_ROOT_KEY, zone.root_key)
+        out.append(
+            (_GEN_VEL_RANGE, struct.pack("<HBB", _GEN_VEL_RANGE, *zone.vel_range))
+        )
+    if zone.root_key != original_pitch:
+        out.append(
+            (
+                _GEN_OVERRIDING_ROOT_KEY,
+                struct.pack("<Hh", _GEN_OVERRIDING_ROOT_KEY, zone.root_key),
+            )
+        )
     if zone.scale_tuning is not None:
-        out += struct.pack("<Hh", _GEN_SCALE_TUNING, zone.scale_tuning)
-    out += struct.pack("<Hh", _GEN_SAMPLE_MODES, 1 if looped else 0)
-    out += struct.pack("<Hh", _GEN_RELEASE_VOL_ENV, zone.release_timecents)
-    out += struct.pack("<HH", _GEN_SAMPLE_ID, zone.sample)
+        out.append(
+            (
+                _GEN_SCALE_TUNING,
+                struct.pack("<Hh", _GEN_SCALE_TUNING, zone.scale_tuning),
+            )
+        )
+    out.append(
+        (_GEN_SAMPLE_MODES, struct.pack("<Hh", _GEN_SAMPLE_MODES, 1 if looped else 0))
+    )
+    out.append(
+        (
+            _GEN_RELEASE_VOL_ENV,
+            struct.pack("<Hh", _GEN_RELEASE_VOL_ENV, zone.release_timecents),
+        )
+    )
+    out.append((_GEN_SAMPLE_ID, struct.pack("<HH", _GEN_SAMPLE_ID, zone.sample)))
     return out
 
 
@@ -731,16 +815,19 @@ def build_soundfont(
         if progress is not None:
             progress(done, total)
 
-    # Plan every sample (name, root key, zone and what to render) first, so they
-    # can be rendered in any order or in worker processes
-    planned: list[tuple[str, int, int | None, tuple[Any, ...]]] = []
-    zone_plans: list[list[tuple[int, Sf2Zone]]] = []
+    # Plan every sample (name, root key, drum note, looped, what to render) and
+    # the instruments first, so the format's limits are checked before any
+    # rendering and the samples can be rendered in any order or in processes
+    planned: list[tuple[str, int, int | None, bool, tuple[Any, ...]]] = []
+    instruments: list[Sf2Instrument] = []
+    presets: list[Sf2Preset] = []
     for program, instrument in sorted(mapping.melodic_instruments.items()):
         arcade = _arcade_instrument(instrument)
         release = _release_timecents(arcade.amp_envelope.release)
         pitchless = arcade.waveform in _PITCHLESS_WAVES
         zones = []
         for low, high, root in groups:
+            looped = _plan_melodic(arcade, root).looped
             for vel_low, vel_high in layers:
                 gain = _melodic_gain(root, k, vel_high, len(layers), options.volume)
                 suffix = f" V{vel_high}" if len(layers) > 1 else ""
@@ -752,16 +839,19 @@ def build_soundfont(
                     release_timecents=release,
                     scale_tuning=0 if pitchless else None,
                 )
-                zones.append((len(planned), zone))
+                zones.append(zone)
                 planned.append(
                     (
                         f"P{program:03d} N{root:03d}{suffix}",
                         root,
                         None,
+                        looped,
                         (arcade, root, gain, options),
                     )
                 )
-        zone_plans.append(zones)
+        name_ = melodic_instrument_name(program)
+        instruments.append(Sf2Instrument(name_, tuple(zones)))
+        presets.append(Sf2Preset(name_, 0, program, len(instruments) - 1))
 
     drum_gain = options.volume / _FULL_VOLUME * 127 / 128
     drum_zones = []
@@ -778,9 +868,15 @@ def build_soundfont(
                 release_timecents=_DRUM_RELEASE_TIMECENTS,
             )
         )
-        planned.append(
-            (f"D{note:03d}", note, note, (_arcade_drum(drum), None, drum_gain, options))
-        )
+        task = (_arcade_drum(drum), None, drum_gain, options)
+        planned.append((f"D{note:03d}", note, note, False, task))
+    if drum_zones:
+        instruments.append(Sf2Instrument("Arcade Drum Kit", tuple(drum_zones)))
+        presets.append(Sf2Preset("Arcade Drum Kit", DRUM_BANK, 0, len(instruments) - 1))
+    sample_info = [(root, looped) for _, root, _, looped, _ in planned]
+    check_record_counts(
+        (instrument_zone_records(i, sample_info) for i in instruments), len(planned)
+    )
 
     rendered: list[tuple[bytes, int | None, tuple[int, int] | None] | None] = [
         None
@@ -795,7 +891,7 @@ def build_soundfont(
             )
         advance()
 
-    tasks = [task for _, _, _, task in planned]
+    tasks = [task for *_, task in planned]
     workers = resolve_jobs(jobs, len(tasks))
     if workers > 1:
         run_in_processes(_render_sample, tasks, workers, on_done)
@@ -804,24 +900,12 @@ def build_soundfont(
             on_done(index, _render_sample(*task))
 
     samples: list[Sf2Sample] = []
-    for (sample_name, root, _, _), result in zip(planned, rendered, strict=True):
+    for (sample_name, root, *_), result in zip(planned, rendered, strict=True):
         assert result is not None
         encoded, frames, loop = result
         samples.append(
             Sf2Sample(sample_name, encoded, options.rate, root, loop, frames)
         )
-    instruments: list[Sf2Instrument] = []
-    presets: list[Sf2Preset] = []
-    for (program, _), zones in zip(
-        sorted(mapping.melodic_instruments.items()), zone_plans, strict=True
-    ):
-        name_ = melodic_instrument_name(program)
-        instruments.append(Sf2Instrument(name_, tuple(zone for _, zone in zones)))
-        presets.append(Sf2Preset(name_, 0, program, len(instruments) - 1))
-    if drum_zones:
-        instruments.append(Sf2Instrument("Arcade Drum Kit", tuple(drum_zones)))
-        presets.append(Sf2Preset("Arcade Drum Kit", DRUM_BANK, 0, len(instruments) - 1))
-
     logger.info(f"{len(presets)} presets, {len(samples)} samples at {options.rate} Hz")
     data = write_sf2(name, samples, instruments, presets, comment=comment)
     if options.sf3:
