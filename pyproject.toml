@@ -45,6 +45,7 @@ dev = [
     "numpy>=2.5.5",
     "pre-commit>=4.6.1",
     "pytest>=9.2.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.16.0",
     "soundfile>=0.14.0",
     "tqdm>=4.70.1",
@@ -70,7 +71,9 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--strict-markers"]
+# Parallel by default (pytest-xdist); worksteal evens out the slow integration tests.
+# Pass -n0 to run serially, e.g. for one test or a debugger.
+addopts = ["--strict-markers", "-n", "auto", "--dist", "worksteal"]
 filterwarnings = ["error"]
 # Applied by directory in tests/conftest.py, so tests don't need to mark themselves
 markers = [

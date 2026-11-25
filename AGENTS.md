@@ -16,7 +16,7 @@ uv run midi2mkcd render song.mid -o song.wav         # also .flac/.ogg/.opus/.mp
 uv run midi2mkcd tune {report,replace,sample} song.mid ...
 uv run midi2mkcd params {show,check,soundfont} ...   # soundfont: -o x.sf2 or x.sf3
 uv run midi2mkcd ... -v                   # debug logging + tracebacks
-uv run pytest
+uv run pytest                             # parallel via pytest-xdist; -n0 for serial
 uv run ruff check . && uv run ruff format .
 uv run mypy src tests                     # strict
 uv run pre-commit run --all-files
