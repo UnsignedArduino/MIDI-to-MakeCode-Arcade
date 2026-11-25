@@ -199,6 +199,14 @@ render matches to within about 0.1 dB in level, tone and timing. A progress bar
 is shown on stderr when it's a terminal and `tqdm` is installed (it comes with 
 the `audio` extra).
 
+`-j N` (`--jobs`) renders in N worker processes, and `-j` alone (or `-j auto`)
+uses one per CPU, like a compiler's `-j`. On 6 cores a 3.5-minute song renders
+about 4x faster. Without `-j` (or with `-j 1`) no worker processes are started,
+and in Pyodide `-j` is ignored. With workers the samples can differ from a
+serial render by float rounding, which doesn't show in 16-bit output. A bare
+`-j` takes a number that follows it, so put it after INPUT (or write
+`-j auto`). `tune replace` and `tune sample` take `-j` too, for `--audio`.
+
 ### Defining your own instrument parameter file
 
 If you would like to create your own instrument parameter file, start from a
@@ -329,6 +337,10 @@ short samples shrink less than long ones. FluidSynth, MuseScore, Polyphone and
 SpessaSynth read SF3, but not every player does. It needs the `compress`
 extra.
 
+`-j` renders (and for SF3, encodes) the samples in worker processes, as for
+`render`: on 6 cores the full SF2 builds about 2.5x faster and the SF3 about 5x
+faster. The SoundFont is the same either way.
+
 The SoundFont is a preview, not an exact copy:
 
 * Held notes loop a slice of the sustain, crossfaded at the loop end.
@@ -367,14 +379,16 @@ installed). The library only logs through the standard `logging` module (the
 `midi2mkcd.tuning`, `midi2mkcd.song_to_midi.song_to_midi(text, params=None)`
 returns recovered MIDI file bytes, and `midi2mkcd.audio` renders audio:
 `render_song(result.song)` gives float32 samples (numpy; pass
-`progress=callback` to get `callback(done, total)` per sound) and
+`progress=callback` to get `callback(done, total)` per sound, and `jobs=N`
+for N worker processes or `jobs=None` for one per CPU; the default 1 starts
+none) and
 `to_wav_bytes(samples)` a WAV file, or `to_audio_bytes(samples, rate, fmt,
 quality=None)` any of `"wav"`, `"flac"`, `"ogg"`, `"opus"`, `"mp3"`
 (`audio_format_for(path)` picks one from an extension). To render several songs one after
 another, `songs_events(songs)` lays them out 1 s apart for `synthesize`
 (`tuning.melodic_samples` / `drum_samples` give `tune sample`'s songs).
 `midi2mkcd.soundfont.build_soundfont(params, SoundFontOptions(...))` returns SF2
-file bytes (SF3 with `SoundFontOptions(sf3=True)`).
+file bytes (SF3 with `SoundFontOptions(sf3=True)`), and takes `jobs` too.
 
 ### Help text
 
@@ -456,7 +470,7 @@ options:
 
 ```commandline
 usage: midi2mkcd render [-h] [-p PARAMS] [--rate HZ] [--volume 0-255]
-                        [--no-velocity] [--quality 0-1] -o OUT [-v]
+                        [--no-velocity] [--quality 0-1] [-j [N]] -o OUT [-v]
                         INPUT
 
 Synthesize a song the way the MakeCode Arcade simulator plays it
@@ -491,6 +505,9 @@ options:
   --quality 0-1        Compression quality for Ogg, Opus and MP3: higher is
                        better and bigger. Default: 0.5. For FLAC it only
                        trades encoding speed against size; ignored for WAV.
+  -j, --jobs [N]       Render in N worker processes. -j alone (or -j auto)
+                       uses one per CPU, like a compiler's -j. Default: 1,
+                       which uses no worker processes.
   -o, --output OUT     Audio file to write: .wav, .flac, .ogg, .opus or .mp3
                        (overwritten if it exists). Required: binary output
                        never goes to stdout.
@@ -535,7 +552,7 @@ commands:
 usage: midi2mkcd params soundfont [-h] [-p PARAMS] [--notes RANGE] [--step N]
                                   [--rate HZ] [--velocity-layers N]
                                   [--volume 0-255] [--allow-incomplete]
-                                  [--quality 0-1] -o OUT [-v]
+                                  [--quality 0-1] [-j [N]] -o OUT [-v]
 
 Render every instrument in PARAMS the way the simulator plays it
 and write an SF2 SoundFont: General MIDI programs in bank 0 and
@@ -568,6 +585,10 @@ options:
                        instead of failing.
   --quality 0-1        Compression quality for SF3 samples: higher is better
                        and bigger. Default: 0.5. Ignored for SF2.
+  -j, --jobs [N]       Render (and for SF3, encode) samples in N worker
+                       processes. -j alone (or -j auto) uses one per CPU, like
+                       a compiler's -j. Default: 1, which uses no worker
+                       processes.
   -o, --output OUT     SoundFont to write: SF3 if it ends in .sf3, else SF2
                        (overwritten if it exists). Required: binary output
                        never goes to stdout.

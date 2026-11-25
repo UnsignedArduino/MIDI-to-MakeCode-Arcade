@@ -15,7 +15,7 @@ from midi2mkcd import (
     render,
     tuning,
 )
-from midi2mkcd.cli import _minutes_seconds, _render_summary, main
+from midi2mkcd.cli import _minutes_seconds, _render_summary, build_parser, main
 from midi2mkcd.song_to_midi import song_to_midi
 
 INPUT = str(FIXTURE_MIDI)
@@ -202,6 +202,9 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         ["tune", "replace", INPUT, "--melodics", "5", "--audio", "x.aiff"],
         ["tune", "sample", INPUT, "--melodics", "0", "--audio", "x.aiff"],
         ["params", "soundfont", "-o", "x.sf3", "--quality", "-0.1"],
+        ["render", INPUT, "-o", "x.wav", "-j", "0"],
+        ["render", INPUT, "-o", "x.wav", "--jobs", "x"],
+        ["params", "soundfont", "-o", "x.sf2", "-j", "-2"],
     ],
     ids=lambda argv: " ".join(Path(a).name for a in argv) or "bare",
 )
@@ -338,6 +341,45 @@ def test_render_progress_bar(
     err = capsys.readouterr().err
     assert "Rendering: 100%" in err
     assert " sound/s" in err or "sound/s]" in err
+
+
+@pytest.mark.parametrize(
+    ("flags", "jobs"),
+    [([], 1), (["-j"], None), (["--jobs"], None), (["-j", "auto"], None),
+     (["-j", "3"], 3), (["-j3"], 3), (["--jobs=1"], 1)],
+)  # fmt: skip
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["render", INPUT, "-o", "x.wav"],
+        ["tune", "replace", INPUT, "--melodics", "5", "--audio", "x.wav"],
+        ["tune", "sample", INPUT, "--melodics", "0", "--audio", "x.wav"],
+        ["params", "soundfont", "-o", "x.sf2"],
+    ],
+    ids=lambda argv: " ".join(argv[:2]),
+)
+def test_jobs_flag(argv: list[str], flags: list[str], jobs: int | None) -> None:
+    assert build_parser().parse_args([*argv, *flags]).jobs == jobs
+
+
+def test_render_with_jobs_keeps_the_progress_bar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("numpy")
+    tqdm = pytest.importorskip("tqdm")
+    real_tqdm = tqdm.tqdm
+    monkeypatch.setattr(
+        tqdm, "tqdm", lambda **kwargs: real_tqdm(**{**kwargs, "disable": False})
+    )
+    serial, pooled = tmp_path / "serial.wav", tmp_path / "pooled.wav"
+    assert run(["render", INPUT, "-o", str(serial), "--rate", "8000"]) == 0
+    capsys.readouterr()
+    assert run(["render", INPUT, "-o", str(pooled), "--rate", "8000", "-j", "2"]) == 0
+    err = capsys.readouterr().err
+    assert "Using 2 worker processes" in err
+    assert "Rendering: 100%" in err
+    with wave.open(str(serial)) as a, wave.open(str(pooled)) as b:
+        assert a.getnframes() == b.getnframes()
 
 
 def test_render_logs_its_speed(

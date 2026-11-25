@@ -20,7 +20,7 @@ from midi2mkcd.arcade.music_types import (
     Instrument,
 )
 from midi2mkcd.audio import note_instructions, synthesize
-from midi2mkcd.errors import MissingDependencyError
+from midi2mkcd.errors import Midi2MkcdError, MissingDependencyError
 from midi2mkcd.midi_to_song.instruments import InstrumentParameterMapping
 from midi2mkcd.soundfont import (
     Sf2Instrument,
@@ -95,6 +95,12 @@ def sample_of(sf: Sf2File, zone: Sf2Zone) -> Sf2Header:
     return sf.samples[index]
 
 
+def root_key(sf: Sf2File, zone: Sf2Zone) -> int:
+    """overridingRootKey, or the sample's original pitch without one."""
+    key = zone.signed(ROOT_KEY)
+    return sample_of(sf, zone).original_pitch if key is None else key
+
+
 def floats(sf: Sf2File, header: Sf2Header) -> Any:
     return np.array(sf.points(header), dtype=np.float64) / 32767
 
@@ -151,6 +157,80 @@ def test_write_sf2_round_trips() -> None:
     assert lead[1].gen(VEL_RANGE) is None
     assert lead[1].gen(SCALE_TUNING) == 0
     assert sf.instruments[1][1][0].gen(SAMPLE_MODES) == 0
+
+
+def test_shared_generators_and_modulators_go_in_a_global_zone() -> None:
+    pcm = bytes(64)
+    samples = [Sf2Sample("a", pcm, 8000, 60), Sf2Sample("b", pcm, 8000, 64)]
+    zones = (
+        soundfont.Sf2Zone(0, (0, 61), 60, release_timecents=-1200),
+        soundfont.Sf2Zone(1, (62, 127), 63, release_timecents=-1200),
+    )
+    instruments = [
+        Sf2Instrument("Two", zones),
+        Sf2Instrument("One", (soundfont.Sf2Zone(0, (0, 127), 60),)),
+    ]
+    presets = [Sf2Preset("Two", 0, 0, 0), Sf2Preset("One", 0, 1, 1)]
+    sf = read_sf2(write_sf2("x", samples, instruments, presets))
+
+    global_zone = sf.global_zones[0]
+    assert global_zone is not None
+    assert global_zone.modulators == list(soundfont.ZONE_MODULATORS)
+    assert sorted(op for op, _ in global_zone.generators) == [RELEASE, SAMPLE_MODES]
+    first, second = sf.raw_instruments[0]
+    assert [op for op, _ in first.generators] == [KEY_RANGE, SAMPLE_ID]
+    # Root key 63 isn't the sample's 64, so the zone keeps it
+    assert [op for op, _ in second.generators] == [KEY_RANGE, ROOT_KEY, SAMPLE_ID]
+    assert first.modulators == second.modulators == []
+    effective = sf.instruments[0][1]
+    assert [z.signed(RELEASE) for z in effective] == [-1200, -1200]
+    assert [root_key(sf, z) for z in effective] == [60, 63]
+    assert all(z.modulators == list(soundfont.ZONE_MODULATORS) for z in effective)
+    # One zone: no global zone, everything in the zone
+    assert sf.global_zones[1] is None
+    (only,) = sf.raw_instruments[1]
+    assert only.modulators == list(soundfont.ZONE_MODULATORS)
+    assert only.gen(RELEASE) is not None
+
+
+@pytest.mark.parametrize("what", ["zones", "generators", "modulators", "samples"])
+def test_record_limits(monkeypatch: pytest.MonkeyPatch, what: str) -> None:
+    monkeypatch.setattr(soundfont, "_MAX_PDTA_RECORDS", 10)
+    zone = soundfont.Sf2Zone(0, (0, 127), 60)
+    records: dict[str, Any] = {
+        "zones": [[([], ())] * 11],
+        "generators": [[([bytes(4)] * 11, ())]],
+        "modulators": [[([], soundfont.ZONE_MODULATORS * 4)]],
+        "samples": [soundfont.instrument_zone_records(
+            Sf2Instrument("x", (zone,)), [(60, False)])],
+    }  # fmt: skip
+    samples = 11 if what == "samples" else 1
+    with pytest.raises(Midi2MkcdError, match=f"instrument {what}|{what}"):
+        soundfont.check_record_counts(records[what], samples)
+
+
+def test_too_many_records_fails_before_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*args: Any) -> None:
+        raise AssertionError("rendered a sample")
+
+    monkeypatch.setattr(soundfont, "_render_sample", fail)
+    monkeypatch.setattr(soundfont, "_MAX_PDTA_RECORDS", 20)
+    with pytest.raises(Midi2MkcdError, match="over SF2's limit of 20"):
+        build_soundfont(
+            mapping({0: instrument()}), SoundFontOptions(notes=range(40, 70))
+        )
+
+
+def test_many_zones_fit_sf2_indices(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--step 3 --velocity-layers 3 at 48 kHz: 12672 melodic zones, which at
+    six generators each overflowed the 16-bit generator index."""
+    monkeypatch.setattr(soundfont, "_render_sample", lambda *a: (bytes(64), None, None))
+    options = SoundFontOptions(step=3, velocity_layers=3, rate=48000)
+    sf = read_sf2(build_soundfont(None, options))
+    zones = sum(len(zones) for zones in sf.raw_instruments)
+    assert zones == 128 * 33 * 3 + 61
 
 
 def test_names_are_truncated_and_ascii() -> None:
@@ -265,7 +345,7 @@ def test_sustained_note_matches_the_simulator_until_the_loop() -> None:
     sf = build(mapping({0: sine}), notes=[60])
     (zone,) = zones_of(sf, 0)
     header = sample_of(sf, zone)
-    assert zone.signed(ROOT_KEY) == 60 and header.original_pitch == 60
+    assert header.original_pitch == 60 and zone.gen(ROOT_KEY) is None
     assert zone.gen(SAMPLE_MODES) == 1
 
     start = header.loop_start - header.start
@@ -363,7 +443,7 @@ def test_loop_starts_after_the_lfos_first_point_past_the_decay() -> None:
 def test_noise_loops_long_and_ignores_pitch() -> None:
     sf = build(mapping({0: instrument(NOISE)}), notes=range(60, 63), step=3)
     (zone,) = zones_of(sf, 0)
-    assert zone.range(KEY_RANGE) == (60, 62) and zone.signed(ROOT_KEY) == 61
+    assert zone.range(KEY_RANGE) == (60, 62) and root_key(sf, zone) == 61
     assert zone.gen(SCALE_TUNING) == 0
     header = sample_of(sf, zone)
     assert header.loop_end - header.loop_start == round(0.5 * RATE)
@@ -372,7 +452,7 @@ def test_noise_loops_long_and_ignores_pitch() -> None:
 def test_step_pitch_shifts_from_the_middle_note() -> None:
     sf = build(mapping({0: instrument(SQUARE)}), notes=range(60, 66), step=3)
     zones = zones_of(sf, 0)
-    assert [(z.range(KEY_RANGE), z.signed(ROOT_KEY)) for z in zones] == [
+    assert [(z.range(KEY_RANGE), root_key(sf, z)) for z in zones] == [
         ((60, 62), 61),
         ((63, 65), 64),
     ]

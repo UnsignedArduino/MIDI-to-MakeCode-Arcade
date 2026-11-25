@@ -25,6 +25,7 @@ INSTRUMENT_PARAMS = PACKAGE_ROOT / "resources" / "instrument_params.yaml"
 # ---------------------------------------------------------------------------
 
 SF3_COMPRESSED = 0x10
+GEN_KEY_RANGE, GEN_VEL_RANGE, GEN_SAMPLE_ID = 43, 44, 53
 
 
 @dataclass
@@ -69,8 +70,12 @@ class Sf2File:
     smpl: bytes
     # (name, program, bank, zones)
     presets: list[tuple[str, int, int, list[Sf2Zone]]] = field(default_factory=list)
-    # (name, zones)
+    # (name, zones): each zone with the instrument's global zone applied (its
+    # generators and modulators where the zone has none of its own)
     instruments: list[tuple[str, list[Sf2Zone]]] = field(default_factory=list)
+    # Each instrument's global zone as stored, and its zones as stored
+    global_zones: list[Sf2Zone | None] = field(default_factory=list)
+    raw_instruments: list[list[Sf2Zone]] = field(default_factory=list)
     samples: list[Sf2Header] = field(default_factory=list)
 
     def points(self, header: Sf2Header) -> list[int]:
@@ -142,6 +147,34 @@ def _zones(
     return out
 
 
+def _split_global(zones: list[Sf2Zone]) -> tuple[Sf2Zone | None, list[Sf2Zone]]:
+    """SF2 7.9: if an instrument has more than one zone and the first one
+    doesn't end with sampleID, it is the global zone."""
+    if len(zones) > 1 and (
+        not zones[0].generators or zones[0].generators[-1][0] != GEN_SAMPLE_ID
+    ):
+        return zones[0], zones[1:]
+    return None, zones
+
+
+def _with_global(zone: Sf2Zone, global_zone: Sf2Zone | None) -> Sf2Zone:
+    """The zone's effective generators (local first, then inherited global
+    ones, sampleID kept last) and modulators (a local one replaces an
+    identical global one: same source, destination, amount source and
+    transform)."""
+    if global_zone is None:
+        return zone
+    local_ops = {op for op, _ in zone.generators}
+    inherited = [(op, a) for op, a in global_zone.generators if op not in local_ops]
+    gens = [g for g in zone.generators if g[0] != GEN_SAMPLE_ID]
+    gens += inherited + [g for g in zone.generators if g[0] == GEN_SAMPLE_ID]
+    local_ids = {(s, d, src, t) for s, d, _, src, t in zone.modulators}
+    mods = [
+        m for m in global_zone.modulators if (m[0], m[1], m[3], m[4]) not in local_ids
+    ] + zone.modulators
+    return Sf2Zone(gens, mods)
+
+
 def read_sf2(data: bytes) -> Sf2File:
     """Parse an SF2 file, asserting the structure the spec requires."""
     ((riff, body),) = _chunks(data)
@@ -182,8 +215,18 @@ def read_sf2(data: bytes) -> Sf2File:
         zones = _zones(pbag, pmod, pgen, bag, phdr[i + 1][3])
         sf.presets.append((_str(name), program, bank, zones))
     for i, (name, bag) in enumerate(inst[:-1]):
+        global_zone, zones = _split_global(
+            _zones(ibag, imod, igen, bag, inst[i + 1][1])
+        )
+        for zone in zones:
+            ops = [op for op, _ in zone.generators]
+            assert ops[-1] == GEN_SAMPLE_ID, "a local zone must end with sampleID"
+            assert GEN_KEY_RANGE not in ops[1:], "keyRange must come first"
+            assert GEN_VEL_RANGE not in ops[2:], "velRange must follow keyRange"
+        sf.global_zones.append(global_zone)
+        sf.raw_instruments.append(zones)
         sf.instruments.append(
-            (_str(name), _zones(ibag, imod, igen, bag, inst[i + 1][1]))
+            (_str(name), [_with_global(zone, global_zone) for zone in zones])
         )
     for name, start, end, ls, le, rate, pitch, _corr, _link, kind in shdr[:-1]:
         sf.samples.append(Sf2Header(_str(name), start, end, ls, le, rate, pitch, kind))
