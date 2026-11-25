@@ -45,6 +45,7 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # Offline and fast; tests only need the fixture MIDI file
+      # Offline and fast; tests only need the fixture MIDI file. Serial, since
+      # starting xdist workers takes longer than the unit tests themselves
       - name: Run unit tests
-        run: uv run pytest -m unit
+        run: uv run pytest -m unit -n0
